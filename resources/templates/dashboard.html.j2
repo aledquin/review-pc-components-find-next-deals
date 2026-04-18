@@ -174,15 +174,23 @@
       </div>
       <div class="card-body">
         <p class="muted" x-show="!loaded">
-          Your rig is not loaded yet. Click below to read the configured snapshot.
+          Click <b>Detect this PC</b> to inspect your actual hardware with the
+          native probe (WMI on Windows, lshw on Linux, system_profiler on
+          macOS). Or load the snapshot the server was started with.
         </p>
         <div class="actions">
           <button class="primary"
+                  hx-post="/htmx/detect" hx-target="#inventory" hx-indicator="#inv-busy"
+                  hx-confirm="Run the native hardware probe on this machine?"
+                  @htmx:after-request="loaded = true">
+            Detect this PC
+          </button>
+          <button class="ghost"
                   hx-get="/htmx/inventory" hx-target="#inventory" hx-indicator="#inv-busy"
                   @htmx:after-request="loaded = true">
-            Load inventory
+            Load configured snapshot
           </button>
-          <span id="inv-busy" class="htmx-indicator">loading...</span>
+          <span id="inv-busy" class="htmx-indicator">working...</span>
         </div>
         <div id="inventory"></div>
       </div>

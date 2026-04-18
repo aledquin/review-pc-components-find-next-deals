@@ -29,12 +29,20 @@ datas += collect_data_files("jinja2", include_py_files=False)
 hidden_imports: list[str] = []
 hidden_imports += collect_submodules("pulp")
 hidden_imports += collect_submodules("pydantic")
+# On Windows, bundle WMI + pywin32 for the "Detect this PC" button.
+if sys.platform == "win32":
+    hidden_imports += collect_submodules("wmi")
+    hidden_imports += [
+        "win32com", "win32com.client", "pywintypes", "pythoncom",
+        "pynvml",
+    ]
 hidden_imports += [
     "pca",
     "pca.ui.gui",
     "pca.ui.gui.app",
     "pca.ui.gui.main_window",
     "pca.ui.gui.controller",
+    "pca.inventory.probe",
     "pca.inventory.windows",
     "pca.inventory.linux",
     "pca.inventory.macos",

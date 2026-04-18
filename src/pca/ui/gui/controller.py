@@ -30,6 +30,7 @@ from pca.core.models import (
     Workload,
 )
 from pca.deprecation.rules import evaluate_all
+from pca.inventory.probe import detect_probe
 from pca.quoting.builder import build_quote
 from pca.reporting.builder import write_quote, write_report
 
@@ -67,6 +68,33 @@ class GuiController:
         self.state.snapshot = snap
         self.state.deprecations = tuple(evaluate_all(snap))
         return snap
+
+    def detect_snapshot(self) -> SystemSnapshot:
+        """Probe the local machine and cache the result as the active snapshot.
+
+        Uses :func:`pca.inventory.probe.detect_probe` to pick the right OS
+        probe (WMI on Windows, ``lshw`` on Linux, ``system_profiler`` on
+        macOS). Any probe failure propagates unchanged so callers can show
+        a meaningful error.
+
+        This call is synchronous and can take several seconds on Windows
+        (WMI queries). GUIs should invoke it from a worker thread.
+        """
+        probe = detect_probe()
+        snap = probe.collect()
+        self.state.snapshot = snap
+        self.state.deprecations = tuple(evaluate_all(snap))
+        return snap
+
+    def save_snapshot(self, path: Path) -> Path:
+        """Persist the currently loaded snapshot to ``path`` as JSON."""
+        if self.state.snapshot is None:
+            raise RuntimeError("no snapshot to save - load or detect one first")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            self.state.snapshot.model_dump_json(indent=2), encoding="utf-8"
+        )
+        return path
 
     def load_market(self, path: Path) -> tuple[tuple[MarketItem, ...], tuple[Deal, ...]]:
         raw = json.loads(path.read_text(encoding="utf-8"))

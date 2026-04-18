@@ -13,7 +13,7 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QObject, Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtWidgets import (
     QComboBox,
@@ -27,6 +27,7 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QMainWindow,
     QMessageBox,
+    QProgressBar,
     QPushButton,
     QSizePolicy,
     QStatusBar,
@@ -82,6 +83,36 @@ def _hline() -> QFrame:
 
 
 # ---------------------------------------------------------------------------
+# Background worker for hardware detection
+# ---------------------------------------------------------------------------
+
+
+class _DetectWorker(QObject):
+    """Runs :meth:`GuiController.detect_snapshot` on a worker thread.
+
+    WMI/lshw/system_profiler calls can take 2-5 seconds; doing them on
+    the GUI thread would freeze the window. The worker runs in a moved
+    :class:`QThread` and emits ``done`` / ``failed`` so the UI can
+    re-render on the main thread.
+    """
+
+    done = pyqtSignal(object)  # SystemSnapshot
+    failed = pyqtSignal(str)
+
+    def __init__(self, controller: GuiController) -> None:
+        super().__init__()
+        self._controller = controller
+
+    def run(self) -> None:
+        try:
+            snap = self._controller.detect_snapshot()
+        except Exception as exc:
+            self.failed.emit(str(exc))
+            return
+        self.done.emit(snap)
+
+
+# ---------------------------------------------------------------------------
 # Tabs
 # ---------------------------------------------------------------------------
 
@@ -92,27 +123,51 @@ class InventoryTab(QWidget):
     def __init__(self, controller: GuiController) -> None:
         super().__init__()
         self._controller = controller
+        self._detect_thread: QThread | None = None
+        self._detect_worker: _DetectWorker | None = None
 
         self._table = _make_table(["Kind", "Vendor", "Model", "Specs"])
-        self._deprecations = QLabel("Load a snapshot to see deprecation warnings.")
+        self._deprecations = QLabel("Load or detect a snapshot to see deprecation warnings.")
         self._deprecations.setWordWrap(True)
         self._deprecations.setStyleSheet("color: #8a8f9a; padding: 4px 0;")
 
+        self._detect_btn = QPushButton("Detect this PC")
+        self._detect_btn.setToolTip(
+            "Inspect the local hardware with the native OS probe "
+            "(WMI on Windows, lshw on Linux, system_profiler on macOS)."
+        )
+        self._detect_btn.clicked.connect(self._detect_clicked)
+
+        self._save_btn = QPushButton("Save as JSON ...")
+        self._save_btn.setToolTip("Persist the current snapshot to disk for later reuse.")
+        self._save_btn.clicked.connect(self._save_clicked)
+        self._save_btn.setEnabled(False)
+
         load_btn = QPushButton("Load snapshot ...")
         load_btn.clicked.connect(self._load_snapshot_dialog)
+
+        self._busy = QProgressBar()
+        self._busy.setRange(0, 0)  # indeterminate
+        self._busy.setVisible(False)
+        self._busy.setTextVisible(False)
+        self._busy.setFixedHeight(4)
 
         layout = QVBoxLayout(self)
         top = QHBoxLayout()
         top.addWidget(QLabel("<b>Hardware inventory</b>"))
         top.addStretch(1)
+        top.addWidget(self._detect_btn)
+        top.addWidget(self._save_btn)
         top.addWidget(load_btn)
         layout.addLayout(top)
+        layout.addWidget(self._busy)
         layout.addWidget(_hline())
         layout.addWidget(self._deprecations)
         layout.addWidget(self._table, 1)
 
     def refresh(self) -> None:
         snap = self._controller.state.snapshot
+        self._save_btn.setEnabled(snap is not None)
         if snap is None:
             self._table.setRowCount(0)
             self._deprecations.setText("No snapshot loaded.")
@@ -149,10 +204,81 @@ class InventoryTab(QWidget):
             QMessageBox.critical(self, "Could not load snapshot", str(exc))
             return
         self.refresh()
-        # Let the MainWindow update its status bar.
         win = self.window()
         if hasattr(win, "_refresh_status"):
             win._refresh_status()
+
+    # ---------------- detect this PC ----------------
+
+    def _detect_clicked(self) -> None:
+        if self._detect_thread is not None:
+            return  # already running
+        self._detect_btn.setEnabled(False)
+        self._detect_btn.setText("Detecting ...")
+        self._busy.setVisible(True)
+        self._deprecations.setText(
+            "Running the native hardware probe. This can take a few seconds on Windows."
+        )
+
+        thread = QThread(self)
+        worker = _DetectWorker(self._controller)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.done.connect(self._on_detect_done)
+        worker.failed.connect(self._on_detect_failed)
+        worker.done.connect(thread.quit)
+        worker.failed.connect(thread.quit)
+        thread.finished.connect(thread.deleteLater)
+        worker.done.connect(worker.deleteLater)
+        worker.failed.connect(worker.deleteLater)
+        self._detect_thread = thread
+        self._detect_worker = worker
+        thread.start()
+
+    def _reset_detect_button(self) -> None:
+        self._detect_btn.setEnabled(True)
+        self._detect_btn.setText("Detect this PC")
+        self._busy.setVisible(False)
+        self._detect_thread = None
+        self._detect_worker = None
+
+    def _on_detect_done(self, _snap: object) -> None:
+        self._reset_detect_button()
+        self.refresh()
+        win = self.window()
+        if hasattr(win, "_refresh_status"):
+            win._refresh_status()
+
+    def _on_detect_failed(self, message: str) -> None:
+        self._reset_detect_button()
+        QMessageBox.critical(
+            self,
+            "Detection failed",
+            f"The native hardware probe could not complete.\n\nDetails: {message}",
+        )
+        self._deprecations.setText(
+            "<span style='color:#c94a4a;'>Detection failed. "
+            "Try loading a snapshot file instead.</span>"
+        )
+
+    # ---------------- save ----------------
+
+    def _save_clicked(self) -> None:
+        if self._controller.state.snapshot is None:
+            QMessageBox.information(self, "Nothing to save", "Detect or load a snapshot first.")
+            return
+        default = f"{self._controller.state.snapshot.id}.json"
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save snapshot", default, "Snapshot (*.json);;All files (*)"
+        )
+        if not path:
+            return
+        try:
+            out = self._controller.save_snapshot(Path(path))
+        except Exception as exc:
+            QMessageBox.critical(self, "Save failed", str(exc))
+            return
+        QMessageBox.information(self, "Saved", f"Wrote:\n{out}")
 
 
 class RecommendTab(QWidget):
@@ -423,6 +549,22 @@ class MainWindow(QMainWindow):
     def _build_menu(self) -> None:
         bar = self.menuBar()
         file_menu = bar.addMenu("&File")
+
+        detect = QAction("&Detect this PC", self)
+        detect.setShortcut("Ctrl+D")
+        detect.triggered.connect(
+            lambda: self._inventory._detect_clicked()
+        )
+        file_menu.addAction(detect)
+
+        save_snap = QAction("S&ave snapshot as ...", self)
+        save_snap.setShortcut(QKeySequence.StandardKey.SaveAs)
+        save_snap.triggered.connect(
+            lambda: self._inventory._save_clicked()
+        )
+        file_menu.addAction(save_snap)
+
+        file_menu.addSeparator()
 
         open_snap = QAction("Open &snapshot ...", self)
         open_snap.setShortcut(QKeySequence.StandardKey.Open)

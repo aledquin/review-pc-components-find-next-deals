@@ -40,6 +40,12 @@ resource_datas = [
 hidden_imports: list[str] = []
 hidden_imports += collect_submodules("pulp")          # MILP solver plugins
 hidden_imports += collect_submodules("pydantic")
+if sys.platform == "win32":
+    hidden_imports += collect_submodules("wmi")
+    hidden_imports += [
+        "win32com", "win32com.client", "pywintypes", "pythoncom",
+        "pynvml",
+    ]
 hidden_imports += [
     "pca",
     "pca.ui.cli.__main__",

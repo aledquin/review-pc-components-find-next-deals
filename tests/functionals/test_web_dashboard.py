@@ -90,6 +90,93 @@ def test_htmx_plan_returns_fragment(client: TestClient) -> None:
     assert "Plan" in r.text
 
 
+def test_api_detect_stubs_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+    """/api/detect runs the native probe - we stub it here to avoid real WMI."""
+    from pca.core.models import SystemSnapshot
+    from tests.fixtures import INV_DIR, MARKET_DIR
+
+    fake = SystemSnapshot.model_validate_json(
+        (INV_DIR / "rig_mid.json").read_text(encoding="utf-8")
+    )
+
+    class _Stub:
+        def collect(self) -> SystemSnapshot:
+            return fake
+
+    monkeypatch.setattr("pca.ui.web.app.detect_probe", lambda: _Stub())
+
+    app = create_app(
+        ServerConfig(
+            snapshot_path=None,  # nothing loaded on disk
+            market_path=MARKET_DIR / "snapshot_normal.json",
+        )
+    )
+    c = TestClient(app)
+
+    # Before detect, inventory is not configured.
+    r = c.get("/api/inventory")
+    assert r.status_code == 404
+
+    # Detect populates in-memory state.
+    r = c.post("/api/detect")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["id"] == "rig_mid"
+    assert "components" in body
+
+    # Inventory endpoints now serve the detected snapshot.
+    r = c.get("/api/inventory")
+    assert r.status_code == 200
+    assert r.json()["id"] == "rig_mid"
+
+
+def test_htmx_detect_returns_fragment(monkeypatch: pytest.MonkeyPatch) -> None:
+    from pca.core.models import SystemSnapshot
+    from tests.fixtures import INV_DIR, MARKET_DIR
+
+    fake = SystemSnapshot.model_validate_json(
+        (INV_DIR / "rig_mid.json").read_text(encoding="utf-8")
+    )
+
+    class _Stub:
+        def collect(self) -> SystemSnapshot:
+            return fake
+
+    monkeypatch.setattr("pca.ui.web.app.detect_probe", lambda: _Stub())
+
+    app = create_app(
+        ServerConfig(
+            snapshot_path=None,
+            market_path=MARKET_DIR / "snapshot_normal.json",
+        )
+    )
+    r = TestClient(app).post("/htmx/detect")
+    assert r.status_code == 200
+    assert "<table>" in r.text
+    assert "Vendor" in r.text  # column header rendered
+
+
+def test_api_detect_surfaces_probe_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    from pca.core.errors import InventoryError
+    from tests.fixtures import MARKET_DIR
+
+    class _Broken:
+        def collect(self) -> object:
+            raise InventoryError("no WMI")
+
+    monkeypatch.setattr("pca.ui.web.app.detect_probe", lambda: _Broken())
+
+    app = create_app(
+        ServerConfig(
+            snapshot_path=None,
+            market_path=MARKET_DIR / "snapshot_normal.json",
+        )
+    )
+    r = TestClient(app).post("/api/detect")
+    assert r.status_code == 500
+    assert "probe failed" in r.json()["detail"]
+
+
 def test_lan_token_blocks_non_loopback() -> None:
     app = create_app(
         ServerConfig(

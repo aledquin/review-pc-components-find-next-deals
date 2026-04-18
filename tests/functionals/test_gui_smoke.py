@@ -20,6 +20,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 pytest.importorskip("PyQt6")
 
+from PyQt6.QtCore import QThread  # noqa: E402
 from PyQt6.QtWidgets import QApplication, QMessageBox  # noqa: E402
 
 from pca.ui.gui.controller import GuiController  # noqa: E402
@@ -114,3 +115,96 @@ def test_recommend_without_snapshot_shows_warning(qapp: QApplication) -> None:
     # The important thing is that the call does not raise.
     tab.run()
     assert tab._table.rowCount() == 0
+
+
+def test_inventory_tab_has_detect_and_save_buttons(
+    qapp: QApplication, controller: GuiController
+) -> None:
+    from pca.ui.gui.main_window import InventoryTab
+
+    tab = InventoryTab(controller)
+    assert tab._detect_btn.text() == "Detect this PC"
+    assert tab._detect_btn.isEnabled()
+    # Save button enabled only after refresh (snapshot is loaded).
+    tab.refresh()
+    assert tab._save_btn.isEnabled()
+
+
+def test_inventory_tab_save_disabled_without_snapshot(qapp: QApplication) -> None:
+    from pca.ui.gui.main_window import InventoryTab
+
+    empty = GuiController()
+    tab = InventoryTab(empty)
+    tab.refresh()
+    assert not tab._save_btn.isEnabled()
+
+
+def test_detect_clicked_invokes_controller(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Clicking 'Detect this PC' should eventually populate the table
+    through the worker thread, using a stubbed probe (no real WMI)."""
+    from pca.core.models import SystemSnapshot
+    from pca.ui.gui.main_window import InventoryTab
+
+    fake = SystemSnapshot.model_validate_json(
+        (INV_DIR / "rig_mid.json").read_text(encoding="utf-8")
+    )
+
+    class _Stub:
+        def collect(self) -> SystemSnapshot:
+            return fake
+
+    monkeypatch.setattr(
+        "pca.ui.gui.controller.detect_probe", lambda: _Stub()
+    )
+
+    ctl = GuiController()
+    tab = InventoryTab(ctl)
+    assert tab._table.rowCount() == 0
+
+    tab._detect_clicked()
+    # Drive the event loop until the worker signals back.
+    deadline_ms = 5000
+    step = 50
+    while tab._detect_thread is not None and deadline_ms > 0:
+        qapp.processEvents()
+        QThread.msleep(step)
+        deadline_ms -= step
+
+    assert tab._detect_thread is None, "detection did not complete in time"
+    assert ctl.state.snapshot is fake
+    assert tab._table.rowCount() > 0
+    assert tab._save_btn.isEnabled()
+
+
+def test_detect_clicked_surfaces_probe_error(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from pca.core.errors import InventoryError
+    from pca.ui.gui.main_window import InventoryTab
+
+    class _Broken:
+        def collect(self) -> object:
+            raise InventoryError("wmi not available")
+
+    monkeypatch.setattr(
+        "pca.ui.gui.controller.detect_probe", lambda: _Broken()
+    )
+
+    ctl = GuiController()
+    tab = InventoryTab(ctl)
+    tab._detect_clicked()
+
+    deadline_ms = 5000
+    step = 50
+    while tab._detect_thread is not None and deadline_ms > 0:
+        qapp.processEvents()
+        QThread.msleep(step)
+        deadline_ms -= step
+
+    assert tab._detect_thread is None
+    assert ctl.state.snapshot is None
+    # Button has been re-enabled for retry.
+    assert tab._detect_btn.isEnabled()
+    assert tab._detect_btn.text() == "Detect this PC"

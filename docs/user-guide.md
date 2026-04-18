@@ -397,7 +397,22 @@ Auto-generated OpenAPI docs live at `/api`. Key endpoints:
 `socket` / `ram_type` are optional; when omitted they're inferred from
 the snapshot.
 
-### 5.4 Stop it
+### 5.4 Detect this PC from the web dashboard
+
+The Inventory card now has two buttons:
+
+- **Detect this PC** - posts to `/htmx/detect`, which runs the native
+  probe in-process and caches the snapshot on the app. All subsequent
+  `/api/inventory` / `/htmx/plan` / `/htmx/quote` calls see the live
+  machine until the server restarts.
+- **Load configured snapshot** - reads the on-disk file the server was
+  started with via `--stub`.
+
+The browser asks for confirmation before running the probe. If you
+started `pca serve` **without** a `--stub` file, the Detect button is
+the only way to populate the dashboard.
+
+### 5.5 Stop it
 
 `Ctrl-C` in the terminal where `pca serve` is running.
 
@@ -423,7 +438,14 @@ and web dashboard - just a different presenter.
   snapshot ...` (`Ctrl+M`), `Export HTML report ...`, `Quit`
   (`Ctrl+Q`).
 - **Inventory tab** - hardware table, deprecation warnings inline at
-  the top.
+  the top, plus three action buttons:
+  - **Detect this PC** - runs the native hardware probe (WMI on
+    Windows, lshw on Linux, system_profiler on macOS) on a background
+    thread so the UI stays responsive. The progress bar animates while
+    the scan runs (2-5 s typical).
+  - **Save as JSON ...** - persists the active snapshot to disk so you
+    can reuse it later via `File > Open snapshot...` or the CLI.
+  - **Load snapshot ...** - opens a previously saved snapshot file.
 - **Recommend tab** - budget spinner, workload combo, strategy combo
   (`greedy` / `ilp` / `multi`), plan table with uplift %, rationale.
 - **Quote tab** - same inputs plus a ZIP field for US tax, totals

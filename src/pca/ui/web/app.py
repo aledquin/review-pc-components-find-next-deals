@@ -40,6 +40,7 @@ from pca.core.models import (
 )
 from pca.core.resources import resource_path
 from pca.deprecation.rules import evaluate_all
+from pca.inventory.probe import detect_probe
 from pca.quoting.builder import build_quote
 
 
@@ -120,6 +121,9 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
         version="0.3.0",
         docs_url="/api",
     )
+    # In-memory override. When the user hits "Detect this PC", we populate
+    # this and prefer it over the on-disk ``cfg.snapshot_path``.
+    app.state.detected_snapshot = None  # type: SystemSnapshot | None
 
     def _require_token(request: Request) -> None:
         if cfg.lan_token is None:
@@ -132,6 +136,8 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
             raise HTTPException(status_code=401, detail="invalid token")
 
     def _load_snapshot() -> SystemSnapshot:
+        if app.state.detected_snapshot is not None:
+            return app.state.detected_snapshot
         if cfg.snapshot_path and cfg.snapshot_path.exists():
             return SystemSnapshot.model_validate_json(
                 cfg.snapshot_path.read_text(encoding="utf-8")
@@ -168,6 +174,28 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
     )
     def api_inventory() -> dict[str, Any]:
         snap = _load_snapshot()
+        deprecations = evaluate_all(snap)
+        payload = json.loads(snap.model_dump_json())
+        payload["deprecations"] = deprecations
+        return payload
+
+    @app.post(
+        "/api/detect",
+        response_class=JSONResponse,
+        dependencies=[Depends(_require_token)],
+    )
+    def api_detect() -> dict[str, Any]:
+        """Inspect the *local* host and cache the snapshot on the app.
+
+        Subsequent calls to ``/api/inventory`` or the HTMX fragments
+        will see the detected snapshot until the process restarts.
+        """
+        try:
+            probe = detect_probe()
+            snap = probe.collect()
+        except Exception as exc:  # surface to the client
+            raise HTTPException(status_code=500, detail=f"probe failed: {exc}")
+        app.state.detected_snapshot = snap
         deprecations = evaluate_all(snap)
         payload = json.loads(snap.model_dump_json())
         payload["deprecations"] = deprecations
@@ -232,6 +260,24 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
     # -----------------------------------------------------------------
     # HTMX partials
     # -----------------------------------------------------------------
+
+    @app.post(
+        "/htmx/detect",
+        response_class=HTMLResponse,
+        dependencies=[Depends(_require_token)],
+    )
+    def htmx_detect() -> str:
+        try:
+            probe = detect_probe()
+            snap = probe.collect()
+        except Exception as exc:
+            return (
+                f'<div class="pill-row" style="margin-bottom:.6rem">'
+                f'<span class="pill warn">detection failed: {html.escape(str(exc))}</span>'
+                f"</div>"
+            )
+        app.state.detected_snapshot = snap
+        return htmx_inventory()
 
     @app.get(
         "/htmx/inventory",
