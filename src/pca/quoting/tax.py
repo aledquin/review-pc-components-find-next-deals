@@ -16,14 +16,11 @@ from typing import Any
 
 import yaml
 
+from pca.core.resources import resource_path
+
 
 def _catalog_path() -> Path:
-    return (
-        Path(__file__).resolve().parents[3]
-        / "resources"
-        / "catalogs"
-        / "us_tax_rates.yaml"
-    )
+    return resource_path("catalogs", "us_tax_rates.yaml")
 
 
 @lru_cache(maxsize=1)

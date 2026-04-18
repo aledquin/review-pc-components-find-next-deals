@@ -17,6 +17,7 @@ Security posture:
 
 from __future__ import annotations
 
+import html
 import json
 from decimal import Decimal
 from pathlib import Path
@@ -24,6 +25,7 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
+from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoescape
 from pydantic import BaseModel, Field
 
 from pca.budget.optimizer_greedy import optimize_greedy
@@ -36,6 +38,7 @@ from pca.core.models import (
     SystemSnapshot,
     Workload,
 )
+from pca.core.resources import resource_path
 from pca.deprecation.rules import evaluate_all
 from pca.quoting.builder import build_quote
 
@@ -83,8 +86,18 @@ class RecommendResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Factory
+# Jinja environment for the dashboard shell
 # ---------------------------------------------------------------------------
+
+
+def _env() -> Environment:
+    return Environment(
+        loader=FileSystemLoader(str(resource_path("templates"))),
+        autoescape=select_autoescape(["html", "xml"]),
+        undefined=StrictUndefined,
+        trim_blocks=True,
+        lstrip_blocks=True,
+    )
 
 
 def _pick_optimizer(strategy: str):
@@ -93,6 +106,11 @@ def _pick_optimizer(strategy: str):
     if strategy == "multi":
         return optimize_multi
     return optimize_greedy
+
+
+# ---------------------------------------------------------------------------
+# App factory
+# ---------------------------------------------------------------------------
 
 
 def create_app(config: ServerConfig | None = None) -> FastAPI:
@@ -104,8 +122,6 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
     )
 
     def _require_token(request: Request) -> None:
-        # When a token is configured (LAN mode), every request must match.
-        # Loopback callers bypass the gate so local CLI smoke tests still work.
         if cfg.lan_token is None:
             return
         client = request.client.host if request.client else ""
@@ -142,7 +158,8 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse, dependencies=[Depends(_require_token)])
     def index() -> str:
-        return _index_html(cfg.ui_disclaimer)
+        tmpl = _env().get_template("dashboard.html.j2")
+        return tmpl.render(disclaimer=cfg.ui_disclaimer)
 
     @app.get(
         "/api/inventory",
@@ -212,6 +229,37 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
         quote = build_quote(plan, deals=matching, zip_code=zip_code)
         return json.loads(quote.model_dump_json())
 
+    # -----------------------------------------------------------------
+    # HTMX partials
+    # -----------------------------------------------------------------
+
+    @app.get(
+        "/htmx/inventory",
+        response_class=HTMLResponse,
+        dependencies=[Depends(_require_token)],
+    )
+    def htmx_inventory() -> str:
+        snap = _load_snapshot()
+        deprecations = evaluate_all(snap)
+        rows = "\n".join(
+            "<tr>"
+            f"<td>{html.escape(c.kind.value)}</td>"
+            f"<td>{html.escape(c.vendor)}</td>"
+            f"<td>{html.escape(c.model)}</td>"
+            f"<td class='muted'>{html.escape(_format_specs(c.specs))}</td>"
+            "</tr>"
+            for c in snap.components
+        )
+        pills = "".join(
+            f'<span class="pill warn">{html.escape(w)}</span>' for w in deprecations
+        ) or '<span class="pill">no deprecations</span>'
+        return (
+            f'<div class="pill-row" style="margin-bottom:.6rem">{pills}</div>'
+            f'<table><thead><tr>'
+            f'<th>Kind</th><th>Vendor</th><th>Model</th><th>Specs</th>'
+            f'</tr></thead><tbody>{rows}</tbody></table>'
+        )
+
     @app.get(
         "/htmx/plan",
         response_class=HTMLResponse,
@@ -228,88 +276,104 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
             strategy=strategy,
         )
         resp = api_recommend(req)
-        rows = "\n".join(
-            f'<tr><td>{it.kind.value}</td><td>{it.vendor}</td>'
-            f'<td>{it.model}</td><td>${it.price_usd:.2f}</td>'
-            f'<td>+{it.perf_uplift_pct:.1f}%</td></tr>'
-            for it in resp.items
+        return _render_plan_fragment(resp, quote=None)
+
+    @app.get(
+        "/htmx/quote",
+        response_class=HTMLResponse,
+        dependencies=[Depends(_require_token)],
+    )
+    def htmx_quote(
+        budget: float,
+        workload: str = "gaming_1440p",
+        strategy: str = "greedy",
+        zip: str | None = None,  # noqa: A002 - intentional HTMX param name
+    ) -> str:
+        req = RecommendRequest(
+            budget_usd=Decimal(str(budget)),
+            workload=Workload(workload),
+            strategy=strategy,
         )
-        return (
-            f'<section class="plan">'
-            f'<h3>Plan ({resp.strategy}): total ${resp.total_usd:.2f} - '
-            f'overall uplift {resp.overall_perf_uplift_pct:.1f}%</h3>'
-            f'<table><thead><tr><th>Kind</th><th>Vendor</th><th>Model</th>'
-            f'<th>Price</th><th>Uplift</th></tr></thead>'
-            f'<tbody>{rows or "<tr><td colspan=5>no candidates</td></tr>"}</tbody>'
-            f'</table></section>'
+        plan_resp = api_recommend(req)
+        # Build a real Quote to get tax/shipping numbers.
+        snap = _load_snapshot()
+        items, deals = _load_market()
+        constraint = BudgetConstraint(
+            max_usd=req.budget_usd,
+            socket=req.socket,
+            ram_type=req.ram_type,
+            target_workload=req.workload,
         )
+        plan = _pick_optimizer(req.strategy)(snap, constraint, items)
+        matching = tuple(
+            d for d in deals if d.market_item_sku in {it.market_item.sku for it in plan.items}
+        )
+        quote = build_quote(plan, deals=matching, zip_code=zip)
+        totals = {
+            "subtotal": f"${quote.plan.total_usd:.2f}",
+            "tax": f"${quote.tax_usd:.2f}",
+            "shipping": f"${quote.shipping_usd:.2f}",
+            "grand": f"${quote.grand_total_usd:.2f}",
+        }
+        return _render_plan_fragment(plan_resp, quote=totals)
 
     return app
 
 
 # ---------------------------------------------------------------------------
-# HTML shell
+# HTML fragment helpers (kept small; real templating lives in the dashboard)
 # ---------------------------------------------------------------------------
 
 
-def _index_html(disclaimer: str) -> str:
-    return f"""<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>PC Upgrade Advisor - dashboard</title>
-  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
-  <script defer src="https://unpkg.com/alpinejs@3.13.5"></script>
-  <style>
-    body {{ font-family: -apple-system, Segoe UI, Roboto, sans-serif;
-           max-width: 960px; margin: 2rem auto; padding: 0 1rem; }}
-    h1 {{ border-bottom: 2px solid #333; padding-bottom: .3rem; }}
-    table {{ border-collapse: collapse; width: 100%; margin: .5rem 0; }}
-    th, td {{ border: 1px solid #ccc; padding: .3rem .6rem; text-align: left; }}
-    th {{ background: #f3f3f3; }}
-    .muted {{ color: #666; font-size: .9rem; }}
-    input, select, button {{ font: inherit; padding: .3rem .5rem; }}
-  </style>
-</head>
-<body x-data="{{ budget: 800, workload: 'gaming_1440p', strategy: 'greedy' }}">
-  <h1>PC Upgrade Advisor</h1>
-  <p class="muted">{disclaimer}</p>
+def _format_specs(specs: dict[str, Any]) -> str:
+    parts = []
+    for k, v in specs.items():
+        parts.append(f"{k}={v}")
+    return ", ".join(parts)
 
-  <section>
-    <h2>Plan</h2>
-    <form>
-      <label>Budget $<input type="number" x-model.number="budget" min="100" step="50"></label>
-      <label>Workload
-        <select x-model="workload">
-          <option value="gaming_1080p">1080p</option>
-          <option value="gaming_1440p">1440p</option>
-          <option value="gaming_4k">4K</option>
-          <option value="productivity">productivity</option>
-          <option value="content_creation">content creation</option>
-          <option value="ml_workstation">ML workstation</option>
-        </select>
-      </label>
-      <label>Strategy
-        <select x-model="strategy">
-          <option value="greedy">greedy</option>
-          <option value="ilp">ilp</option>
-          <option value="multi">multi (perf/power/noise)</option>
-        </select>
-      </label>
-      <button type="button"
-              hx-get="/htmx/plan"
-              hx-target="#plan"
-              :hx-vals="JSON.stringify({{budget:budget, workload:workload, strategy:strategy}})">
-        Recommend
-      </button>
-    </form>
-    <div id="plan"></div>
-  </section>
 
-  <section>
-    <h2>Inventory</h2>
-    <button hx-get="/api/inventory" hx-target="#inventory-json">Load</button>
-    <pre id="inventory-json" class="muted"></pre>
-  </section>
-</body>
-</html>"""
+def _render_plan_fragment(
+    resp: RecommendResponse, *, quote: dict[str, str] | None
+) -> str:
+    if not resp.items:
+        return '<p class="muted">No upgrade candidates fit the constraints.</p>'
+
+    rows = "\n".join(
+        "<tr>"
+        f"<td>{html.escape(it.kind.value)}</td>"
+        f"<td>{html.escape(it.vendor)}</td>"
+        f"<td>{html.escape(it.model)}</td>"
+        f"<td class='num'>${it.price_usd:.2f}</td>"
+        f"<td class='num'>+{it.perf_uplift_pct:.1f}%</td>"
+        f"<td class='muted'>{html.escape(it.rationale)}</td>"
+        "</tr>"
+        for it in resp.items
+    )
+    totals_html = ""
+    if quote:
+        totals_html = (
+            '<div class="totals">'
+            f'<div class="tile"><div class="k">Subtotal</div><div class="v">{quote["subtotal"]}</div></div>'
+            f'<div class="tile"><div class="k">Tax</div><div class="v">{quote["tax"]}</div></div>'
+            f'<div class="tile"><div class="k">Shipping</div><div class="v">{quote["shipping"]}</div></div>'
+            f'<div class="tile"><div class="k">Grand total</div><div class="v">{quote["grand"]}</div></div>'
+            '</div>'
+        )
+    else:
+        totals_html = (
+            '<div class="totals">'
+            f'<div class="tile"><div class="k">Strategy</div><div class="v">{html.escape(resp.strategy)}</div></div>'
+            f'<div class="tile"><div class="k">Plan total</div><div class="v">${resp.total_usd:.2f}</div></div>'
+            f'<div class="tile"><div class="k">Overall uplift</div><div class="v">+{resp.overall_perf_uplift_pct:.1f}%</div></div>'
+            '</div>'
+        )
+    return (
+        '<section class="plan">'
+        '<table><thead><tr>'
+        '<th>Kind</th><th>Vendor</th><th>Model</th><th>Price</th>'
+        '<th>Uplift</th><th>Rationale</th>'
+        '</tr></thead>'
+        f'<tbody>{rows}</tbody></table>'
+        f'{totals_html}'
+        '</section>'
+    )

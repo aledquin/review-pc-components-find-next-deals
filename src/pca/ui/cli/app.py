@@ -296,6 +296,31 @@ def serve(
 
 
 @app.command()
+def gui(
+    stub: Annotated[
+        Path | None,
+        typer.Option("--stub", help="Pre-load a snapshot JSON into the GUI."),
+    ] = None,
+    market_file: Annotated[
+        Path | None,
+        typer.Option("--market", help="Pre-load a market snapshot JSON into the GUI."),
+    ] = None,
+) -> None:
+    """Launch the native PyQt6 desktop GUI (no browser)."""
+    try:
+        from pca.ui.gui.app import main as _gui_main
+    except ImportError as exc:  # pragma: no cover
+        console.print(
+            "[red]PyQt6 not installed. Install the 'gui' extra:[/] "
+            "pip install pc-upgrade-advisor[gui]"
+        )
+        raise typer.Exit(code=2) from exc
+
+    code = _gui_main(snapshot_path=stub, market_path=market_file)
+    raise typer.Exit(code=code)
+
+
+@app.command()
 def bench(
     stub: Annotated[Path | None, typer.Option("--stub")] = None,
     quick: Annotated[bool, typer.Option("--quick/--full")] = True,

@@ -13,6 +13,7 @@ dist/
 htmlcov/
 coverage.xml
 *.spec
+!packaging/*.spec
 .DS_Store
 .idea/
 .vscode/

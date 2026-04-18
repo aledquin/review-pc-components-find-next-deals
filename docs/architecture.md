@@ -184,6 +184,7 @@ loopback hosts require `--token`.
 
 ## 10. Cross-references
 
+- End-user documentation: [`docs/user-guide.md`](user-guide.md).
 - Product plan: `prompts/pc-upgrade-advisor-plan.md`.
 - ADRs: `docs/adr/`.
 - Data-source ToS stance: `docs/data-sources-tos.md`.

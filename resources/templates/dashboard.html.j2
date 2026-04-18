@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PC Upgrade Advisor</title>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <script defer src="https://unpkg.com/alpinejs@3.13.5"></script>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --panel: #171a21;
+      --panel-2: #1f2330;
+      --text: #e7ebf3;
+      --muted: #9aa3b2;
+      --accent: #6aa1ff;
+      --accent-2: #8ad0a5;
+      --danger: #ff6b6b;
+      --border: #2a2f3d;
+      --radius: 10px;
+      --shadow: 0 1px 3px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.2);
+      --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f7f8fb;
+        --panel: #ffffff;
+        --panel-2: #f1f3f9;
+        --text: #111420;
+        --muted: #5a6473;
+        --accent: #2b63d9;
+        --accent-2: #2f8f5b;
+        --danger: #c62828;
+        --border: #d7dbe6;
+        --shadow: 0 1px 2px rgba(20,30,60,.06), 0 6px 18px rgba(20,30,60,.08);
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: -apple-system, "Segoe UI", Roboto, Inter, "Helvetica Neue", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    header.topbar {
+      display: flex; align-items: center; gap: .75rem;
+      padding: .9rem 1.25rem;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; z-index: 10;
+    }
+    .logo {
+      width: 28px; height: 28px; border-radius: 6px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      display: inline-flex; align-items: center; justify-content: center;
+      color: white; font-weight: 700;
+    }
+    header h1 { font-size: 1.05rem; margin: 0; font-weight: 600; }
+    header .muted { color: var(--muted); font-size: .85rem; margin-left: auto; }
+    main {
+      max-width: 1100px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem;
+      display: grid; grid-template-columns: 1fr; gap: 1.25rem;
+    }
+    @media (min-width: 960px) {
+      main { grid-template-columns: 360px 1fr; }
+      .col-span-2 { grid-column: 1 / -1; }
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .card-head {
+      display: flex; align-items: center; gap: .5rem;
+      padding: .9rem 1.1rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel-2);
+    }
+    .card-head h2 { margin: 0; font-size: 1rem; font-weight: 600; letter-spacing: .02em; }
+    .card-head .badge {
+      margin-left: auto;
+      font-size: .72rem; color: var(--muted);
+      background: var(--bg); border: 1px solid var(--border);
+      padding: .1rem .45rem; border-radius: 999px;
+      font-family: var(--mono);
+    }
+    .card-body { padding: 1.1rem; }
+    .form-row {
+      display: grid; grid-template-columns: auto 1fr; gap: .5rem .75rem;
+      align-items: center; margin-bottom: .6rem;
+    }
+    label { color: var(--muted); font-size: .85rem; }
+    input, select, button {
+      font: inherit; color: var(--text);
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 6px; padding: .45rem .6rem; min-width: 0;
+    }
+    input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+    button.primary {
+      background: var(--accent); color: white; border-color: transparent;
+      cursor: pointer; font-weight: 600;
+    }
+    button.primary:hover { filter: brightness(1.08); }
+    button.ghost {
+      background: transparent; color: var(--text); cursor: pointer;
+    }
+    button.ghost:hover { background: var(--panel-2); }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .actions { display: flex; gap: .5rem; margin-top: .75rem; flex-wrap: wrap; }
+    table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+    th, td { padding: .5rem .6rem; text-align: left; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: uppercase; letter-spacing: .06em; }
+    tbody tr:hover { background: var(--panel-2); }
+    .num { font-family: var(--mono); text-align: right; }
+    .muted { color: var(--muted); font-size: .9rem; }
+    .totals {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: .75rem; margin-top: .75rem;
+    }
+    .totals .tile {
+      background: var(--panel-2); border: 1px solid var(--border);
+      border-radius: 8px; padding: .75rem;
+    }
+    .totals .tile .k { color: var(--muted); font-size: .75rem; text-transform: uppercase; letter-spacing: .05em; }
+    .totals .tile .v { font-size: 1.15rem; font-weight: 600; margin-top: .2rem; font-family: var(--mono); }
+    .htmx-indicator { display: none; color: var(--muted); font-size: .85rem; }
+    .htmx-request .htmx-indicator { display: inline; }
+    .htmx-request.pending-hide { opacity: .4; pointer-events: none; }
+    .pill-row { display: flex; flex-wrap: wrap; gap: .35rem; }
+    .pill {
+      display: inline-block; font-size: .72rem; color: var(--muted);
+      border: 1px solid var(--border); background: var(--bg);
+      border-radius: 999px; padding: .1rem .55rem; font-family: var(--mono);
+    }
+    .pill.warn { color: var(--danger); border-color: var(--danger); }
+    details > summary { cursor: pointer; color: var(--muted); font-size: .85rem; }
+    pre.json {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 6px; padding: .75rem; font-family: var(--mono);
+      font-size: .8rem; max-height: 320px; overflow: auto; white-space: pre-wrap;
+    }
+    .kvs { display: grid; grid-template-columns: max-content 1fr; gap: .3rem .75rem; }
+    .kvs dt { color: var(--muted); font-size: .82rem; }
+    .kvs dd { margin: 0; font-family: var(--mono); font-size: .85rem; }
+    footer {
+      text-align: center; color: var(--muted); font-size: .8rem; padding: 1.5rem 1rem;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body x-data="{
+        budget: 800, workload: 'gaming_1440p', strategy: 'multi',
+        zip: '98101', loaded: false
+      }">
+
+  <header class="topbar">
+    <span class="logo">PC</span>
+    <h1>PC Upgrade Advisor</h1>
+    <span class="muted">{{ disclaimer }}</span>
+  </header>
+
+  <main>
+
+    <!-- ========== Inventory card ========== -->
+    <section class="card">
+      <div class="card-head">
+        <h2>Inventory</h2>
+        <span class="badge">local snapshot</span>
+      </div>
+      <div class="card-body">
+        <p class="muted" x-show="!loaded">
+          Your rig is not loaded yet. Click below to read the configured snapshot.
+        </p>
+        <div class="actions">
+          <button class="primary"
+                  hx-get="/htmx/inventory" hx-target="#inventory" hx-indicator="#inv-busy"
+                  @htmx:after-request="loaded = true">
+            Load inventory
+          </button>
+          <span id="inv-busy" class="htmx-indicator">loading...</span>
+        </div>
+        <div id="inventory"></div>
+      </div>
+    </section>
+
+    <!-- ========== Recommend card ========== -->
+    <section class="card">
+      <div class="card-head">
+        <h2>Upgrade plan</h2>
+        <span class="badge">budget-constrained</span>
+      </div>
+      <div class="card-body">
+        <form @submit.prevent>
+          <div class="form-row">
+            <label for="budget">Budget (USD)</label>
+            <input id="budget" type="number" min="100" step="50"
+                   x-model.number="budget">
+          </div>
+          <div class="form-row">
+            <label for="workload">Workload</label>
+            <select id="workload" x-model="workload">
+              <option value="gaming_1080p">Gaming - 1080p</option>
+              <option value="gaming_1440p">Gaming - 1440p</option>
+              <option value="gaming_4k">Gaming - 4K</option>
+              <option value="productivity">Productivity</option>
+              <option value="content_creation">Content creation</option>
+              <option value="ml_workstation">ML workstation</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label for="strategy">Strategy</label>
+            <select id="strategy" x-model="strategy">
+              <option value="greedy">Greedy - fast baseline</option>
+              <option value="ilp">ILP - optimal under linear constraints</option>
+              <option value="multi">Multi-objective - perf / power / noise</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label for="zip">ZIP (tax)</label>
+            <input id="zip" type="text" pattern="\d{5}" maxlength="5"
+                   placeholder="optional" x-model="zip">
+          </div>
+          <div class="actions">
+            <button type="button" class="primary"
+                    hx-get="/htmx/plan" hx-target="#plan" hx-indicator="#plan-busy"
+                    :hx-vals="JSON.stringify({budget:budget, workload:workload, strategy:strategy})">
+              Recommend
+            </button>
+            <button type="button" class="ghost"
+                    hx-get="/htmx/quote" hx-target="#plan" hx-indicator="#plan-busy"
+                    :hx-vals="JSON.stringify({budget:budget, workload:workload, strategy:strategy, zip:zip})">
+              Generate quote
+            </button>
+            <span id="plan-busy" class="htmx-indicator">computing...</span>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- ========== Plan / Quote results ========== -->
+    <section class="card col-span-2">
+      <div class="card-head">
+        <h2>Results</h2>
+        <span class="badge">plan + quote</span>
+      </div>
+      <div class="card-body">
+        <div id="plan">
+          <p class="muted">Configure a budget above and hit <b>Recommend</b>.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="card col-span-2">
+      <div class="card-head">
+        <h2>Raw JSON</h2>
+        <span class="badge">/api/inventory</span>
+      </div>
+      <div class="card-body">
+        <details>
+          <summary>Expand the full inventory payload</summary>
+          <pre id="inventory-json" class="json muted"
+               hx-get="/api/inventory" hx-trigger="toggle from:closest details once"
+               hx-swap="innerHTML"></pre>
+        </details>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    <span>Local-first. No telemetry. See <a href="https://github.com/example/pc-upgrade-advisor">source</a>.</span>
+  </footer>
+</body>
+</html>

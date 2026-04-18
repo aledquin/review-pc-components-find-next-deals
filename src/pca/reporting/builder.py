@@ -9,15 +9,13 @@ from typing import Any
 from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoescape
 
 from pca.core.models import Quote, Report, SystemSnapshot
+from pca.core.resources import resource_path
 from pca.reporting.charts import png_as_data_url, snapshot_scores_png
 from pca.reporting.pdf import try_render_html_to_pdf
 
 
 def _templates_path() -> Path:
-    # The repo layout places templates under ``resources/templates/`` at the
-    # project root. ``parents[3]`` walks up from
-    # ``src/pca/reporting/builder.py`` to the repo root.
-    return Path(__file__).resolve().parents[3] / "resources" / "templates"
+    return resource_path("templates")
 
 
 def _env() -> Environment:

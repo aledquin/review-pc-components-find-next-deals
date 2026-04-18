@@ -9,6 +9,8 @@ from typing import Any
 
 import yaml
 
+from pca.core.resources import resource_path
+
 
 @dataclass(frozen=True)
 class DeprecationEntry:
@@ -55,12 +57,7 @@ def _as_date(val: Any) -> date:
 def load_catalog(path: Path | None = None) -> DeprecationCatalog:
     """Load the catalog from YAML. Defaults to the one shipped with the package."""
     if path is None:
-        path = (
-            Path(__file__).resolve().parents[3]
-            / "resources"
-            / "catalogs"
-            / "deprecation.yaml"
-        )
+        path = resource_path("catalogs", "deprecation.yaml")
     data: dict[str, Any] = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     drivers = data.get("gpu_drivers") or {}
     return DeprecationCatalog(

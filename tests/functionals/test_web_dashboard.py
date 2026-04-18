@@ -37,6 +37,27 @@ def test_index_serves_htmx_shell(client: TestClient) -> None:
     assert r.status_code == 200
     assert "PC Upgrade Advisor" in r.text
     assert "htmx" in r.text.lower()
+    # Modernized dashboard ships cards + form controls.
+    assert "card" in r.text
+    assert 'id="budget"' in r.text
+    assert 'id="strategy"' in r.text
+
+
+def test_htmx_inventory_renders_table(client: TestClient) -> None:
+    r = client.get("/htmx/inventory")
+    assert r.status_code == 200
+    assert "<table>" in r.text
+    assert "<thead>" in r.text
+
+
+def test_htmx_quote_returns_totals(client: TestClient) -> None:
+    r = client.get(
+        "/htmx/quote",
+        params={"budget": 1200, "workload": "gaming_1440p", "strategy": "greedy", "zip": "98101"},
+    )
+    assert r.status_code == 200
+    assert "Grand total" in r.text
+    assert "Tax" in r.text
 
 
 def test_inventory_returns_components(client: TestClient) -> None:
