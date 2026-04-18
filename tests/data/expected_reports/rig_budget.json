@@ -1,0 +1,145 @@
+{
+  "id": "rig_budget",
+  "components": [
+    {
+      "id": "cpu-1",
+      "kind": "cpu",
+      "vendor": "Intel",
+      "model": "Core i5-8400",
+      "specs": {
+        "cores": 6,
+        "threads": 6,
+        "socket": "LGA1151",
+        "tdp_w": 65
+      },
+      "acquired_at": "2018-06-01"
+    },
+    {
+      "id": "gpu-1",
+      "kind": "gpu",
+      "vendor": "NVIDIA",
+      "model": "GeForce GTX 1060 6GB",
+      "specs": {
+        "vram_gb": 6,
+        "tdp_w": 120
+      },
+      "acquired_at": "2018-07-01"
+    },
+    {
+      "id": "ram-1",
+      "kind": "ram",
+      "vendor": "Corsair",
+      "model": "Vengeance LPX 2x8GB DDR4-2666",
+      "specs": {
+        "capacity_gb": 16,
+        "type": "DDR4",
+        "speed_mts": 2666
+      },
+      "acquired_at": "2018-06-01"
+    },
+    {
+      "id": "mb-1",
+      "kind": "motherboard",
+      "vendor": "ASUS",
+      "model": "Prime B360M-A",
+      "specs": {
+        "socket": "LGA1151",
+        "form_factor": "mATX",
+        "ram_type": "DDR4"
+      },
+      "acquired_at": null
+    },
+    {
+      "id": "storage-1",
+      "kind": "storage",
+      "vendor": "Kingston",
+      "model": "A400 480GB",
+      "specs": {
+        "capacity_gb": 480,
+        "type": "SATA-SSD",
+        "iops_4k_rand_read": 22000
+      },
+      "acquired_at": null
+    },
+    {
+      "id": "psu-1",
+      "kind": "psu",
+      "vendor": "EVGA",
+      "model": "500 W1",
+      "specs": {
+        "watts": 500,
+        "rating": "80Plus-White"
+      },
+      "acquired_at": null
+    },
+    {
+      "id": "case-1",
+      "kind": "case",
+      "vendor": "Cooler Master",
+      "model": "MasterBox Q300L",
+      "specs": {
+        "form_factor": "mATX",
+        "max_gpu_len_mm": 360
+      },
+      "acquired_at": null
+    },
+    {
+      "id": "cooler-1",
+      "kind": "cooler",
+      "vendor": "Intel",
+      "model": "Stock Cooler",
+      "specs": {
+        "type": "air",
+        "tdp_w": 65
+      },
+      "acquired_at": null
+    },
+    {
+      "id": "os-1",
+      "kind": "os",
+      "vendor": "Microsoft",
+      "model": "Windows 11 Pro",
+      "specs": {
+        "version": "23H2",
+        "arch": "x86_64"
+      },
+      "acquired_at": null
+    }
+  ],
+  "benchmarks": [
+    {
+      "id": "bm-cpu-1",
+      "component_id": "cpu-1",
+      "metric": "cpu.sysbench.events_per_sec",
+      "value": 2400.0,
+      "unit": "ev/s",
+      "env_hash": "budgetrig",
+      "ran_at": "2025-01-01T12:00:00Z"
+    },
+    {
+      "id": "bm-gpu-1",
+      "component_id": "gpu-1",
+      "metric": "gpu.synthetic.score",
+      "value": 330.0,
+      "unit": "score",
+      "env_hash": "budgetrig",
+      "ran_at": "2025-01-01T12:00:00Z"
+    },
+    {
+      "id": "bm-storage-1",
+      "component_id": "storage-1",
+      "metric": "storage.fio.iops_4k_randread",
+      "value": 22000.0,
+      "unit": "iops",
+      "env_hash": "budgetrig",
+      "ran_at": "2025-01-01T12:00:00Z"
+    }
+  ],
+  "os_info": {
+    "family": "Windows",
+    "version": "11",
+    "build": "22631",
+    "arch": "x86_64"
+  },
+  "captured_at": "2025-01-01T12:00:00Z"
+}

@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Upgrade quote</title>
+  <style>
+    body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; max-width: 960px;
+           margin: 2rem auto; padding: 0 1rem; line-height: 1.45; }
+    table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+    th, td { border: 1px solid #ccc; padding: .4rem .6rem; text-align: left; }
+    th { background: #f3f3f3; }
+    .right { text-align: right; }
+    .total { font-weight: 700; font-size: 1.1rem; }
+    .note { color: #666; font-size: .85rem; }
+  </style>
+</head>
+<body>
+  <h1>Upgrade quote</h1>
+  <p class="note">Generated {{ quote.generated_at }} - strategy: <code>{{ quote.plan.strategy }}</code></p>
+
+  <h2>Items</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Kind</th><th>Vendor</th><th>Model</th>
+        <th class="right">Price</th>
+        <th>Rationale</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in quote.plan.items %}
+      <tr>
+        <td>{{ item.kind.value }}</td>
+        <td>{{ item.market_item.vendor }}</td>
+        <td>{{ item.market_item.model }}</td>
+        <td class="right">${{ "%.2f"|format(item.market_item.price_usd) }}</td>
+        <td>{{ item.rationale }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td colspan="3" class="right">Subtotal</td>
+        <td class="right">${{ "%.2f"|format(quote.plan.total_usd) }}</td><td></td>
+      </tr>
+      <tr>
+        <td colspan="3" class="right">Estimated tax</td>
+        <td class="right">${{ "%.2f"|format(quote.tax_usd) }}</td><td></td>
+      </tr>
+      <tr>
+        <td colspan="3" class="right">Estimated shipping</td>
+        <td class="right">${{ "%.2f"|format(quote.shipping_usd) }}</td><td></td>
+      </tr>
+      <tr class="total">
+        <td colspan="3" class="right">Grand total</td>
+        <td class="right">${{ "%.2f"|format(quote.grand_total_usd) }}</td><td></td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <p class="note">Expected performance uplift: <strong>{{ "%.1f"|format(quote.plan.overall_perf_uplift_pct) }}%</strong> weighted for workload.</p>
+
+  {% if quote.deals %}
+  <h2>Active deals included</h2>
+  <ul>
+    {% for d in quote.deals %}
+      <li>{{ d.source }} - {{ d.market_item_sku }} - {{ "%.1f"|format(d.discount_pct) }}% off{% if d.expires_at %} (expires {{ d.expires_at }}){% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  <hr />
+  <p class="note">{{ quote.affiliate_disclosure }}</p>
+</body>
+</html>

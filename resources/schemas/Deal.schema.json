@@ -1,0 +1,69 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "coupon_code": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Coupon Code"
+    },
+    "discount_pct": {
+      "maximum": 100.0,
+      "minimum": 0.0,
+      "title": "Discount Pct",
+      "type": "number"
+    },
+    "expires_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Expires At"
+    },
+    "market_item_sku": {
+      "minLength": 1,
+      "title": "Market Item Sku",
+      "type": "string"
+    },
+    "original_price_usd": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Original Price Usd"
+    },
+    "source": {
+      "minLength": 1,
+      "title": "Source",
+      "type": "string"
+    }
+  },
+  "required": [
+    "market_item_sku",
+    "source",
+    "discount_pct"
+  ],
+  "title": "Deal",
+  "type": "object"
+}

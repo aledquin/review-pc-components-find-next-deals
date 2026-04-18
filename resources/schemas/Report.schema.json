@@ -1,0 +1,43 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "html_path": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Html Path"
+    },
+    "json_path": {
+      "title": "Json Path",
+      "type": "string"
+    },
+    "pdf_path": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Pdf Path"
+    },
+    "snapshot_id": {
+      "title": "Snapshot Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "snapshot_id",
+    "json_path"
+  ],
+  "title": "Report",
+  "type": "object"
+}

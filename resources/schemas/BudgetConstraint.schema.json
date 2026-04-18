@@ -1,0 +1,125 @@
+{
+  "$defs": {
+    "BudgetTier": {
+      "enum": [
+        "min_viable",
+        "sweet_spot",
+        "no_compromise"
+      ],
+      "title": "BudgetTier",
+      "type": "string"
+    },
+    "Workload": {
+      "description": "Target workloads that drive the perf-score weighting.",
+      "enum": [
+        "gaming_1080p",
+        "gaming_1440p",
+        "gaming_4k",
+        "productivity",
+        "content_creation",
+        "ml_workstation"
+      ],
+      "title": "Workload",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "form_factor": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Form Factor"
+    },
+    "max_usd": {
+      "anyOf": [
+        {
+          "exclusiveMinimum": 0.0,
+          "type": "number"
+        },
+        {
+          "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+          "type": "string"
+        }
+      ],
+      "title": "Max Usd"
+    },
+    "noise_dba_max": {
+      "anyOf": [
+        {
+          "minimum": 0.0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Noise Dba Max"
+    },
+    "preferred_brands": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Preferred Brands",
+      "type": "array"
+    },
+    "psu_watts_min": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Psu Watts Min"
+    },
+    "ram_type": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Ram Type"
+    },
+    "socket": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Socket"
+    },
+    "target_workload": {
+      "$ref": "#/$defs/Workload",
+      "default": "gaming_1440p"
+    },
+    "tier": {
+      "$ref": "#/$defs/BudgetTier",
+      "default": "sweet_spot"
+    }
+  },
+  "required": [
+    "max_usd"
+  ],
+  "title": "BudgetConstraint",
+  "type": "object"
+}

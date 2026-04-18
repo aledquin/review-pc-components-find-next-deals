@@ -1,0 +1,106 @@
+{
+  "id": "rig_mid",
+  "captured_at": "2025-01-01T12:00:00Z",
+  "os_info": {
+    "family": "Windows",
+    "version": "11",
+    "build": "22631",
+    "arch": "x86_64"
+  },
+  "components": [
+    {
+      "id": "cpu-1",
+      "kind": "cpu",
+      "vendor": "AMD",
+      "model": "Ryzen 5 3600",
+      "specs": { "cores": 6, "threads": 12, "socket": "AM4", "tdp_w": 65 },
+      "acquired_at": "2020-02-01"
+    },
+    {
+      "id": "gpu-1",
+      "kind": "gpu",
+      "vendor": "NVIDIA",
+      "model": "GeForce RTX 2060 Super",
+      "specs": { "vram_gb": 8, "tdp_w": 175 },
+      "acquired_at": "2020-02-01"
+    },
+    {
+      "id": "ram-1",
+      "kind": "ram",
+      "vendor": "G.Skill",
+      "model": "Ripjaws V 2x8GB DDR4-3200",
+      "specs": { "capacity_gb": 16, "type": "DDR4", "speed_mts": 3200 }
+    },
+    {
+      "id": "mb-1",
+      "kind": "motherboard",
+      "vendor": "MSI",
+      "model": "B450 TOMAHAWK MAX",
+      "specs": { "socket": "AM4", "form_factor": "ATX", "ram_type": "DDR4" }
+    },
+    {
+      "id": "storage-1",
+      "kind": "storage",
+      "vendor": "Samsung",
+      "model": "970 EVO 1TB",
+      "specs": { "capacity_gb": 1000, "type": "NVMe-Gen3", "iops_4k_rand_read": 500000 }
+    },
+    {
+      "id": "psu-1",
+      "kind": "psu",
+      "vendor": "Corsair",
+      "model": "RM650x",
+      "specs": { "watts": 650, "rating": "80Plus-Gold" }
+    },
+    {
+      "id": "case-1",
+      "kind": "case",
+      "vendor": "Fractal Design",
+      "model": "Meshify C",
+      "specs": { "form_factor": "ATX", "max_gpu_len_mm": 315 }
+    },
+    {
+      "id": "cooler-1",
+      "kind": "cooler",
+      "vendor": "be quiet!",
+      "model": "Pure Rock 2",
+      "specs": { "type": "air", "tdp_w": 150 }
+    },
+    {
+      "id": "os-1",
+      "kind": "os",
+      "vendor": "Microsoft",
+      "model": "Windows 11 Pro",
+      "specs": { "version": "23H2", "arch": "x86_64" }
+    }
+  ],
+  "benchmarks": [
+    {
+      "id": "bm-cpu-1",
+      "component_id": "cpu-1",
+      "metric": "cpu.sysbench.events_per_sec",
+      "value": 4800.0,
+      "unit": "ev/s",
+      "env_hash": "midrig00",
+      "ran_at": "2025-01-01T12:00:00Z"
+    },
+    {
+      "id": "bm-gpu-1",
+      "component_id": "gpu-1",
+      "metric": "gpu.synthetic.score",
+      "value": 700.0,
+      "unit": "score",
+      "env_hash": "midrig00",
+      "ran_at": "2025-01-01T12:00:00Z"
+    },
+    {
+      "id": "bm-storage-1",
+      "component_id": "storage-1",
+      "metric": "storage.fio.iops_4k_randread",
+      "value": 500000.0,
+      "unit": "iops",
+      "env_hash": "midrig00",
+      "ran_at": "2025-01-01T12:00:00Z"
+    }
+  ]
+}

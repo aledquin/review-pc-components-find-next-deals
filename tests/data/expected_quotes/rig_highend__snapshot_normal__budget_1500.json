@@ -1,0 +1,43 @@
+{
+  "plan": {
+    "items": [
+      {
+        "replaces_component_id": "cpu-1",
+        "kind": "cpu",
+        "market_item": {
+          "sku": "BB-7800X3D",
+          "kind": "cpu",
+          "vendor": "AMD",
+          "model": "Ryzen 7 7800X3D",
+          "price_usd": "389.99",
+          "source": "bestbuy",
+          "url": "https://example.test/7800x3d",
+          "stock": "in_stock",
+          "fetched_at": "2025-01-01T12:00:00Z",
+          "specs": {
+            "socket": "AM5",
+            "cores": 8,
+            "threads": 16,
+            "tdp_w": 120
+          },
+          "perf_score": 1400.0
+        },
+        "perf_uplift_pct": 16.28,
+        "rationale": "Replace cpu with AMD Ryzen 7 7800X3D ($389.99): balances perf vs. cost."
+      }
+    ],
+    "total_usd": "389.99",
+    "overall_perf_uplift_pct": 4.8837,
+    "bottlenecks_resolved": [
+      "cpu"
+    ],
+    "rationale": "greedy: perf-per-dollar, one swap per component kind",
+    "strategy": "greedy"
+  },
+  "tax_usd": "34.51",
+  "shipping_usd": "0.00",
+  "grand_total_usd": "424.50",
+  "generated_at": "2025-01-01T12:00:00Z",
+  "deals": [],
+  "affiliate_disclosure": "Some links may earn a small commission at no extra cost to you."
+}

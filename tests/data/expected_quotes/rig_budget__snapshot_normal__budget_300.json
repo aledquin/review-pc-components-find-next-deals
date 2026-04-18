@@ -1,0 +1,66 @@
+{
+  "plan": {
+    "items": [
+      {
+        "replaces_component_id": "ram-1",
+        "kind": "ram",
+        "market_item": {
+          "sku": "BB-DDR4-32-3600",
+          "kind": "ram",
+          "vendor": "G.Skill",
+          "model": "Ripjaws V 2x16GB DDR4-3600",
+          "price_usd": "69.99",
+          "source": "bestbuy",
+          "url": "https://example.test/ddr4-3600-32",
+          "stock": "in_stock",
+          "fetched_at": "2025-01-01T12:00:00Z",
+          "specs": {
+            "type": "DDR4",
+            "speed_mts": 3600,
+            "capacity_gb": 32
+          },
+          "perf_score": 220.0
+        },
+        "perf_uplift_pct": 57.14,
+        "rationale": "Replace ram with G.Skill Ripjaws V 2x16GB DDR4-3600 ($69.99): balances perf vs. cost."
+      },
+      {
+        "replaces_component_id": "storage-1",
+        "kind": "storage",
+        "market_item": {
+          "sku": "BB-NVMe-1TB-G4",
+          "kind": "storage",
+          "vendor": "WD",
+          "model": "Black SN770 1TB",
+          "price_usd": "69.99",
+          "source": "bestbuy",
+          "url": "https://example.test/sn770-1tb",
+          "stock": "in_stock",
+          "fetched_at": "2025-01-01T12:00:00Z",
+          "specs": {
+            "type": "NVMe-Gen4",
+            "capacity_gb": 1000,
+            "iops_4k_rand_read": 740000
+          },
+          "perf_score": 820.0
+        },
+        "perf_uplift_pct": 2892.7,
+        "rationale": "Replace storage with WD Black SN770 1TB ($69.99): reduces load times and random-I/O waits."
+      }
+    ],
+    "total_usd": "139.98",
+    "overall_perf_uplift_pct": 150.3493,
+    "bottlenecks_resolved": [
+      "ram",
+      "storage"
+    ],
+    "rationale": "greedy: perf-per-dollar, one swap per component kind",
+    "strategy": "greedy"
+  },
+  "tax_usd": "12.39",
+  "shipping_usd": "0.00",
+  "grand_total_usd": "152.37",
+  "generated_at": "2025-01-01T12:00:00Z",
+  "deals": [],
+  "affiliate_disclosure": "Some links may earn a small commission at no extra cost to you."
+}

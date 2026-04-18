@@ -1,0 +1,53 @@
+# Deprecation catalog for PC Upgrade Advisor.
+# Each entry has a stable key used by `deprecation/rules.py` and a
+# human-readable reason surfaced in the report.
+#
+# Dates are ISO 8601. When a date is in the past, the entry is considered
+# deprecated. Ongoing entries omit `end_of_support`.
+
+sockets:
+  - id: LGA1151
+    status: end_of_life
+    end_of_support: 2021-06-30
+    reason: >-
+      LGA1151 (Intel 6th-9th gen) is end-of-life; no new CPUs will be released
+      for this socket.
+  - id: AM4
+    status: maintenance_only
+    reason: >-
+      AM4 is in maintenance mode. New budget SKUs (e.g., 5700X3D) are still
+      appearing but the platform will not advance beyond DDR4.
+  - id: LGA1200
+    status: end_of_life
+    end_of_support: 2023-01-01
+    reason: LGA1200 (10th-11th gen) is end-of-life.
+
+chipsets:
+  - id: B360
+    status: end_of_life
+    reason: B360 chipset is legacy (8th gen).
+  - id: Z390
+    status: end_of_life
+    reason: Z390 chipset is legacy (9th gen).
+  - id: X470
+    status: legacy
+    reason: X470 predates Zen 2/3 optimizations; B550/X570 are preferred.
+
+memory_generations:
+  - id: DDR3
+    status: end_of_life
+    reason: DDR3 is end-of-life for consumer platforms.
+
+operating_systems:
+  - id: Windows 10
+    status: nearing_end_of_support
+    end_of_support: 2025-10-14
+    reason: Mainstream support ends 2025-10-14.
+  - id: Windows 7
+    status: end_of_life
+    end_of_support: 2020-01-14
+    reason: Windows 7 reached end-of-life in 2020.
+
+gpu_drivers:
+  # Drivers older than N days relative to "today" trigger a warning.
+  max_driver_age_days: 365

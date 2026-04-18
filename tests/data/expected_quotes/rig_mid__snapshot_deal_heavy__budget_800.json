@@ -1,0 +1,131 @@
+{
+  "plan": {
+    "items": [
+      {
+        "replaces_component_id": "cpu-1",
+        "kind": "cpu",
+        "market_item": {
+          "sku": "BB-5700X3D",
+          "kind": "cpu",
+          "vendor": "AMD",
+          "model": "Ryzen 7 5700X3D",
+          "price_usd": "199.99",
+          "source": "bestbuy",
+          "url": "https://example.test/5700x3d",
+          "stock": "in_stock",
+          "fetched_at": "2025-11-28T12:00:00Z",
+          "specs": {
+            "socket": "AM4",
+            "cores": 8,
+            "threads": 16,
+            "tdp_w": 105
+          },
+          "perf_score": 1080.0
+        },
+        "perf_uplift_pct": 100.0,
+        "rationale": "Replace cpu with AMD Ryzen 7 5700X3D ($199.99): eliminates CPU bottleneck."
+      },
+      {
+        "replaces_component_id": "gpu-1",
+        "kind": "gpu",
+        "market_item": {
+          "sku": "BB-7700XT",
+          "kind": "gpu",
+          "vendor": "AMD",
+          "model": "Radeon RX 7700 XT",
+          "price_usd": "349.99",
+          "source": "bestbuy",
+          "url": "https://example.test/7700xt",
+          "stock": "in_stock",
+          "fetched_at": "2025-11-28T12:00:00Z",
+          "specs": {
+            "vram_gb": 12,
+            "tdp_w": 245
+          },
+          "perf_score": 1350.0
+        },
+        "perf_uplift_pct": 94.52,
+        "rationale": "Replace gpu with AMD Radeon RX 7700 XT ($349.99): balances perf vs. cost."
+      },
+      {
+        "replaces_component_id": "ram-1",
+        "kind": "ram",
+        "market_item": {
+          "sku": "BB-DDR4-32-3600",
+          "kind": "ram",
+          "vendor": "G.Skill",
+          "model": "Ripjaws V 2x16GB DDR4-3600",
+          "price_usd": "54.99",
+          "source": "bestbuy",
+          "url": "https://example.test/ddr4-3600-32",
+          "stock": "in_stock",
+          "fetched_at": "2025-11-28T12:00:00Z",
+          "specs": {
+            "type": "DDR4",
+            "speed_mts": 3600,
+            "capacity_gb": 32
+          },
+          "perf_score": 220.0
+        },
+        "perf_uplift_pct": 15.79,
+        "rationale": "Replace ram with G.Skill Ripjaws V 2x16GB DDR4-3600 ($54.99): balances perf vs. cost."
+      },
+      {
+        "replaces_component_id": "storage-1",
+        "kind": "storage",
+        "market_item": {
+          "sku": "BB-NVMe-1TB-G4",
+          "kind": "storage",
+          "vendor": "WD",
+          "model": "Black SN770 1TB",
+          "price_usd": "54.99",
+          "source": "bestbuy",
+          "url": "https://example.test/sn770-1tb",
+          "stock": "in_stock",
+          "fetched_at": "2025-11-28T12:00:00Z",
+          "specs": {
+            "type": "NVMe-Gen4",
+            "capacity_gb": 1000,
+            "iops_4k_rand_read": 740000
+          },
+          "perf_score": 820.0
+        },
+        "perf_uplift_pct": 64.0,
+        "rationale": "Replace storage with WD Black SN770 1TB ($54.99): reduces load times and random-I/O waits."
+      }
+    ],
+    "total_usd": "659.96",
+    "overall_perf_uplift_pct": 86.7674,
+    "bottlenecks_resolved": [
+      "cpu",
+      "gpu",
+      "ram",
+      "storage"
+    ],
+    "rationale": "greedy: perf-per-dollar, one swap per component kind",
+    "strategy": "greedy"
+  },
+  "tax_usd": "58.41",
+  "shipping_usd": "0.00",
+  "grand_total_usd": "718.37",
+  "generated_at": "2025-01-01T12:00:00Z",
+  "deals": [
+    {
+      "market_item_sku": "BB-5700X3D",
+      "source": "bestbuy",
+      "discount_pct": 16.7,
+      "expires_at": "2025-12-02T07:00:00Z",
+      "coupon_code": null,
+      "original_price_usd": "239.99"
+    },
+    {
+      "market_item_sku": "BB-NVMe-1TB-G4",
+      "source": "bestbuy",
+      "discount_pct": 21.4,
+      "expires_at": "2025-12-02T07:00:00Z",
+      "coupon_code": null,
+      "original_price_usd": "69.99"
+    }
+  ],
+  "affiliate_disclosure": "Some links may earn a small commission at no extra cost to you."
+}

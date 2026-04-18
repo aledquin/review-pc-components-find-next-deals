@@ -1,0 +1,207 @@
+{
+  "$defs": {
+    "Benchmark": {
+      "additionalProperties": false,
+      "properties": {
+        "component_id": {
+          "minLength": 1,
+          "title": "Component Id",
+          "type": "string"
+        },
+        "env_hash": {
+          "description": "Hash of the benchmark environment.",
+          "minLength": 8,
+          "title": "Env Hash",
+          "type": "string"
+        },
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "metric": {
+          "description": "e.g. 'cpu.sysbench.events_per_sec'.",
+          "minLength": 1,
+          "title": "Metric",
+          "type": "string"
+        },
+        "ran_at": {
+          "format": "date-time",
+          "title": "Ran At",
+          "type": "string"
+        },
+        "unit": {
+          "minLength": 1,
+          "title": "Unit",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "component_id",
+        "metric",
+        "value",
+        "unit",
+        "env_hash",
+        "ran_at"
+      ],
+      "title": "Benchmark",
+      "type": "object"
+    },
+    "Component": {
+      "additionalProperties": false,
+      "properties": {
+        "acquired_at": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Acquired At"
+        },
+        "id": {
+          "description": "Stable local identifier (UUID or slug).",
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/ComponentKind"
+        },
+        "model": {
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "specs": {
+          "additionalProperties": true,
+          "title": "Specs",
+          "type": "object"
+        },
+        "vendor": {
+          "minLength": 1,
+          "title": "Vendor",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "vendor",
+        "model"
+      ],
+      "title": "Component",
+      "type": "object"
+    },
+    "ComponentKind": {
+      "description": "Canonical component categories. Stable string values: used in golden files.",
+      "enum": [
+        "cpu",
+        "gpu",
+        "ram",
+        "motherboard",
+        "storage",
+        "psu",
+        "cooler",
+        "case",
+        "peripheral",
+        "os"
+      ],
+      "title": "ComponentKind",
+      "type": "string"
+    },
+    "OsInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "arch": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Arch"
+        },
+        "build": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Build"
+        },
+        "family": {
+          "minLength": 1,
+          "title": "Family",
+          "type": "string"
+        },
+        "version": {
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "family",
+        "version"
+      ],
+      "title": "OsInfo",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "benchmarks": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Benchmark"
+      },
+      "title": "Benchmarks",
+      "type": "array"
+    },
+    "captured_at": {
+      "format": "date-time",
+      "title": "Captured At",
+      "type": "string"
+    },
+    "components": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Component"
+      },
+      "title": "Components",
+      "type": "array"
+    },
+    "id": {
+      "minLength": 1,
+      "title": "Id",
+      "type": "string"
+    },
+    "os_info": {
+      "$ref": "#/$defs/OsInfo"
+    }
+  },
+  "required": [
+    "id",
+    "os_info",
+    "captured_at"
+  ],
+  "title": "SystemSnapshot",
+  "type": "object"
+}

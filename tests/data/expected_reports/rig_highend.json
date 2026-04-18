@@ -1,0 +1,145 @@
+{
+  "id": "rig_highend",
+  "components": [
+    {
+      "id": "cpu-1",
+      "kind": "cpu",
+      "vendor": "AMD",
+      "model": "Ryzen 7 7800X3D",
+      "specs": {
+        "cores": 8,
+        "threads": 16,
+        "socket": "AM5",
+        "tdp_w": 120
+      },
+      "acquired_at": null
+    },
+    {
+      "id": "gpu-1",
+      "kind": "gpu",
+      "vendor": "NVIDIA",
+      "model": "GeForce RTX 4080",
+      "specs": {
+        "vram_gb": 16,
+        "tdp_w": 320
+      },
+      "acquired_at": null
+    },
+    {
+      "id": "ram-1",
+      "kind": "ram",
+      "vendor": "G.Skill",
+      "model": "Trident Z5 2x16GB DDR5-6000",
+      "specs": {
+        "capacity_gb": 32,
+        "type": "DDR5",
+        "speed_mts": 6000
+      },
+      "acquired_at": null
+    },
+    {
+      "id": "mb-1",
+      "kind": "motherboard",
+      "vendor": "ASUS",
+      "model": "ROG Strix X670E-E",
+      "specs": {
+        "socket": "AM5",
+        "form_factor": "ATX",
+        "ram_type": "DDR5"
+      },
+      "acquired_at": null
+    },
+    {
+      "id": "storage-1",
+      "kind": "storage",
+      "vendor": "Samsung",
+      "model": "990 Pro 2TB",
+      "specs": {
+        "capacity_gb": 2000,
+        "type": "NVMe-Gen4",
+        "iops_4k_rand_read": 1400000
+      },
+      "acquired_at": null
+    },
+    {
+      "id": "psu-1",
+      "kind": "psu",
+      "vendor": "Corsair",
+      "model": "RM850x",
+      "specs": {
+        "watts": 850,
+        "rating": "80Plus-Gold"
+      },
+      "acquired_at": null
+    },
+    {
+      "id": "case-1",
+      "kind": "case",
+      "vendor": "Lian Li",
+      "model": "O11 Dynamic EVO",
+      "specs": {
+        "form_factor": "ATX",
+        "max_gpu_len_mm": 420
+      },
+      "acquired_at": null
+    },
+    {
+      "id": "cooler-1",
+      "kind": "cooler",
+      "vendor": "Arctic",
+      "model": "Liquid Freezer II 360",
+      "specs": {
+        "type": "aio",
+        "tdp_w": 300
+      },
+      "acquired_at": null
+    },
+    {
+      "id": "os-1",
+      "kind": "os",
+      "vendor": "Microsoft",
+      "model": "Windows 11 Pro",
+      "specs": {
+        "version": "23H2",
+        "arch": "x86_64"
+      },
+      "acquired_at": null
+    }
+  ],
+  "benchmarks": [
+    {
+      "id": "bm-cpu-1",
+      "component_id": "cpu-1",
+      "metric": "cpu.sysbench.events_per_sec",
+      "value": 11200.0,
+      "unit": "ev/s",
+      "env_hash": "highend0",
+      "ran_at": "2025-01-01T12:00:00Z"
+    },
+    {
+      "id": "bm-gpu-1",
+      "component_id": "gpu-1",
+      "metric": "gpu.synthetic.score",
+      "value": 1800.0,
+      "unit": "score",
+      "env_hash": "highend0",
+      "ran_at": "2025-01-01T12:00:00Z"
+    },
+    {
+      "id": "bm-storage-1",
+      "component_id": "storage-1",
+      "metric": "storage.fio.iops_4k_randread",
+      "value": 1400000.0,
+      "unit": "iops",
+      "env_hash": "highend0",
+      "ran_at": "2025-01-01T12:00:00Z"
+    }
+  ],
+  "os_info": {
+    "family": "Windows",
+    "version": "11",
+    "build": "22631",
+    "arch": "x86_64"
+  },
+  "captured_at": "2025-01-01T12:00:00Z"
+}

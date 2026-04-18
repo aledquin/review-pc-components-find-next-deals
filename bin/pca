@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# POSIX launcher for PC Upgrade Advisor.
+# Prefers an installed entry point; falls back to `python -m pca`.
+set -euo pipefail
+
+if command -v pca-cli >/dev/null 2>&1; then
+  exec pca-cli "$@"
+fi
+
+exec python -m pca "$@"

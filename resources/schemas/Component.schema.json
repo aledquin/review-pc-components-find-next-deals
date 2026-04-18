@@ -1,0 +1,69 @@
+{
+  "$defs": {
+    "ComponentKind": {
+      "description": "Canonical component categories. Stable string values: used in golden files.",
+      "enum": [
+        "cpu",
+        "gpu",
+        "ram",
+        "motherboard",
+        "storage",
+        "psu",
+        "cooler",
+        "case",
+        "peripheral",
+        "os"
+      ],
+      "title": "ComponentKind",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "acquired_at": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Acquired At"
+    },
+    "id": {
+      "description": "Stable local identifier (UUID or slug).",
+      "minLength": 1,
+      "title": "Id",
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/ComponentKind"
+    },
+    "model": {
+      "minLength": 1,
+      "title": "Model",
+      "type": "string"
+    },
+    "specs": {
+      "additionalProperties": true,
+      "title": "Specs",
+      "type": "object"
+    },
+    "vendor": {
+      "minLength": 1,
+      "title": "Vendor",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "kind",
+    "vendor",
+    "model"
+  ],
+  "title": "Component",
+  "type": "object"
+}

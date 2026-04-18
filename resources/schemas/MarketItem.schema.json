@@ -1,0 +1,116 @@
+{
+  "$defs": {
+    "ComponentKind": {
+      "description": "Canonical component categories. Stable string values: used in golden files.",
+      "enum": [
+        "cpu",
+        "gpu",
+        "ram",
+        "motherboard",
+        "storage",
+        "psu",
+        "cooler",
+        "case",
+        "peripheral",
+        "os"
+      ],
+      "title": "ComponentKind",
+      "type": "string"
+    },
+    "StockStatus": {
+      "enum": [
+        "in_stock",
+        "low_stock",
+        "out_of_stock",
+        "unknown"
+      ],
+      "title": "StockStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "fetched_at": {
+      "format": "date-time",
+      "title": "Fetched At",
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/ComponentKind"
+    },
+    "model": {
+      "minLength": 1,
+      "title": "Model",
+      "type": "string"
+    },
+    "perf_score": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Pre-computed normalized performance score.",
+      "title": "Perf Score"
+    },
+    "price_usd": {
+      "anyOf": [
+        {
+          "minimum": 0.0,
+          "type": "number"
+        },
+        {
+          "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+          "type": "string"
+        }
+      ],
+      "title": "Price Usd"
+    },
+    "sku": {
+      "description": "Retailer SKU or source-unique id.",
+      "minLength": 1,
+      "title": "Sku",
+      "type": "string"
+    },
+    "source": {
+      "description": "Adapter name: 'bestbuy', 'amazon-paapi', ...",
+      "minLength": 1,
+      "title": "Source",
+      "type": "string"
+    },
+    "specs": {
+      "additionalProperties": true,
+      "title": "Specs",
+      "type": "object"
+    },
+    "stock": {
+      "$ref": "#/$defs/StockStatus",
+      "default": "unknown"
+    },
+    "url": {
+      "minLength": 1,
+      "title": "Url",
+      "type": "string"
+    },
+    "vendor": {
+      "minLength": 1,
+      "title": "Vendor",
+      "type": "string"
+    }
+  },
+  "required": [
+    "sku",
+    "kind",
+    "vendor",
+    "model",
+    "price_usd",
+    "source",
+    "url",
+    "fetched_at"
+  ],
+  "title": "MarketItem",
+  "type": "object"
+}

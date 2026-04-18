@@ -1,0 +1,52 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "component_id": {
+      "minLength": 1,
+      "title": "Component Id",
+      "type": "string"
+    },
+    "env_hash": {
+      "description": "Hash of the benchmark environment.",
+      "minLength": 8,
+      "title": "Env Hash",
+      "type": "string"
+    },
+    "id": {
+      "minLength": 1,
+      "title": "Id",
+      "type": "string"
+    },
+    "metric": {
+      "description": "e.g. 'cpu.sysbench.events_per_sec'.",
+      "minLength": 1,
+      "title": "Metric",
+      "type": "string"
+    },
+    "ran_at": {
+      "format": "date-time",
+      "title": "Ran At",
+      "type": "string"
+    },
+    "unit": {
+      "minLength": 1,
+      "title": "Unit",
+      "type": "string"
+    },
+    "value": {
+      "title": "Value",
+      "type": "number"
+    }
+  },
+  "required": [
+    "id",
+    "component_id",
+    "metric",
+    "value",
+    "unit",
+    "env_hash",
+    "ran_at"
+  ],
+  "title": "Benchmark",
+  "type": "object"
+}
