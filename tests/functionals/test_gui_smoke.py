@@ -81,6 +81,94 @@ def test_inventory_tab_refresh_populates_table(
     assert tab._table.rowCount() > 0
 
 
+def test_inventory_specs_render_as_html_bullet_list(
+    qapp: QApplication, controller: GuiController
+) -> None:
+    """The Specs column must use a rich-text QLabel with a vertical
+    bullet list, not the legacy ``k=v, k=v`` plain text."""
+
+    from PyQt6.QtWidgets import QLabel
+
+    from pca.ui.gui.main_window import InventoryTab
+
+    tab = InventoryTab(controller)
+    tab.refresh()
+    widget = tab._table.cellWidget(0, 3)
+    assert isinstance(widget, QLabel)
+    markup = widget.text()
+    assert "&bull;" in markup or "\u2022" in markup
+    assert "k=v" not in markup
+
+
+def test_tables_allow_user_resizing_and_reordering(
+    qapp: QApplication, controller: GuiController
+) -> None:
+    """All tables must use Interactive resize so users can drag column
+    dividers, and allow drag-reorder of the headers."""
+
+    from PyQt6.QtWidgets import QHeaderView
+
+    from pca.ui.gui.main_window import InventoryTab, QuoteTab, RecommendTab
+
+    for tab in (
+        InventoryTab(controller),
+        RecommendTab(controller),
+        QuoteTab(controller),
+    ):
+        hdr = tab._table.horizontalHeader()
+        assert hdr.sectionsMovable()
+        assert hdr.stretchLastSection()
+        for col in range(tab._table.columnCount()):
+            assert hdr.sectionResizeMode(col) == QHeaderView.ResizeMode.Interactive
+
+
+def test_recommend_links_model_to_retailer_url(
+    qapp: QApplication, controller: GuiController
+) -> None:
+    """The 'Upgrade' cell must embed an <a href=...> pointing to the
+    MarketItem URL (our KGR market uses https://example.test/...)."""
+
+    from PyQt6.QtWidgets import QLabel
+
+    from pca.ui.gui.main_window import RecommendTab
+
+    tab = RecommendTab(controller)
+    tab._budget.setValue(1200.0)
+    tab.run()
+    assert tab._table.rowCount() > 0
+    cell = tab._table.cellWidget(0, 1)
+    assert isinstance(cell, QLabel)
+    markup = cell.text()
+    assert '<a href="https://example.test' in markup
+    assert "replaces" in markup
+    assert cell.openExternalLinks() is True
+
+
+def test_recommend_shows_improved_specs_column(
+    qapp: QApplication, controller: GuiController
+) -> None:
+    """Recommend now has an 'Improved specs' column, populated with a
+    current-vs-new diff rendered as rich text."""
+
+    from PyQt6.QtWidgets import QLabel
+
+    from pca.ui.gui.main_window import RecommendTab
+
+    tab = RecommendTab(controller)
+    headers = [
+        tab._table.horizontalHeaderItem(i).text()
+        for i in range(tab._table.columnCount())
+    ]
+    assert "Improved specs" in headers
+    tab._budget.setValue(1200.0)
+    tab.run()
+    col = headers.index("Improved specs")
+    cell = tab._table.cellWidget(0, col)
+    assert isinstance(cell, QLabel)
+    markup = cell.text()
+    assert "&rarr;" in markup or "→" in markup or "(new)" in markup or "(unchanged)" in markup
+
+
 def test_recommend_tab_runs_plan(qapp: QApplication, controller: GuiController) -> None:
     from pca.ui.gui.main_window import RecommendTab
 

@@ -158,9 +158,13 @@ cp .env.example .env
 | `PCA_LOG_LEVEL`             | `INFO`                  | `DEBUG`, `INFO`, `WARNING`, `ERROR`      |
 | `PCA_CACHE_DIR`             | platform cache dir      | Where the SQLite market cache lives      |
 | `PCA_REPORT_DIR`            | platform data dir       | Default output folder for reports/quotes |
+| `PCA_USER_DATA_DIR`         | platform data dir       | Where the GUI persists the last snapshot |
 | `PCA_ENABLE_SCRAPERS`       | `false`                 | Opt-in to scraping fallbacks (ADR 0007)  |
 | `PCA_ALLOW_PLUGINS`         | `false`                 | Load third-party retailer plugins        |
 | `PCA_ALLOW_CLOUD_LLM`       | `false`                 | Allow `OpenAIExplainer` to run           |
+| `PCA_ENABLE_ADAPTERS`       | `""` (auto)             | Comma-separated adapter allow-list       |
+| `PCA_NEWEGG_FEED_PATH`      | _unset_                 | Path to a Newegg affiliate feed file     |
+| `PCA_ADAPTER_HTTP_TIMEOUT`  | `10.0`                  | Per-request timeout (seconds)            |
 
 ### 2.2 Retailer credentials (all optional)
 
@@ -177,7 +181,120 @@ cp .env.example .env
 Missing credentials do not break the app - the corresponding adapter stays
 inert and the registry routes around it.
 
-### 2.3 Deal-ranker weights
+### 2.3 Managing API keys
+
+**Scope.** Keys are per-OS-user, not per-UI. You set them **once** and they
+apply to `pca` (CLI), `pca-gui` (native GUI), and `pca serve` (web
+dashboard) equally. There is no in-app settings screen - by design, so
+secrets never touch the repo or the UI state. Each retailer has its own
+key set; they are independent (you can run with Best Buy only, or eBay +
+Newegg, etc.).
+
+**Sources, in order of precedence.** When the process starts, pydantic
+reads each `PCA_*` variable from the first source that has it:
+
+1. A real process environment variable (`setx`, `export`, CI secret,
+   systemd `Environment=`, Docker `-e`, etc.).
+2. A `.env` file in the current working directory at launch time.
+3. The pydantic default (usually `None` / "adapter inert").
+
+Put another way: a shell-exported `PCA_BESTBUY_API_KEY` will win over the
+same key in `.env`.
+
+**Where to keep the `.env` file.**
+
+| Install style                         | Recommended location for `.env`                                          |
+| ------------------------------------- | ------------------------------------------------------------------------ |
+| Source checkout (`pip install -e .`)  | Repo root (same place you launch `pca` from)                             |
+| Standalone `pca.exe` / `pca-gui.exe`  | Next to the executable, or set real env vars user-wide (see below)       |
+| Docker / CI                           | Inject via `-e VAR=...` / GitHub Actions `secrets:` - **do not** COPY it |
+
+**Setting keys - platform recipes.**
+
+```powershell
+# Windows (user-wide, persists across reboots; restart terminals after):
+setx PCA_BESTBUY_API_KEY "abc123"
+setx PCA_EBAY_CLIENT_ID  "clientid"
+setx PCA_EBAY_CLIENT_SECRET "clientsecret"
+
+# Windows (current PowerShell session only, for quick testing):
+$env:PCA_BESTBUY_API_KEY = "abc123"
+```
+
+```bash
+# Linux / macOS - add to ~/.bashrc, ~/.zshrc, or ~/.profile:
+export PCA_BESTBUY_API_KEY="abc123"
+export PCA_EBAY_CLIENT_ID="clientid"
+export PCA_EBAY_CLIENT_SECRET="clientsecret"
+
+# Or keep a .env beside the binary / repo root (never commit it):
+cp .env.example .env && $EDITOR .env
+```
+
+**Verifying.** After any change, run:
+
+```bash
+pca doctor
+```
+
+It lists every first-party adapter with state `active` / `inactive` and
+a reason (missing var name, allow-list blocking it, etc.). Example:
+
+```
+Adapter       State     Detail
+------------  --------  ----------------------------------------
+bestbuy       active    PCA_BESTBUY_API_KEY set; feed via default transport
+ebay          inactive  missing PCA_EBAY_CLIENT_ID and PCA_EBAY_CLIENT_SECRET
+...
+Summary: 1/5 first-party adapters active.
+```
+
+**Reload semantics (important).** `Settings` is cached for the life of a
+process, so editing `.env` mid-session is ignored until you restart. By
+UI:
+
+| UI                  | How to pick up new keys                             |
+| ------------------- | --------------------------------------------------- |
+| `pca <command>`     | Automatic - every CLI invocation is a fresh process |
+| `pca-gui` / `.exe`  | Quit the window and relaunch                        |
+| `pca serve`         | Stop uvicorn (Ctrl-C) and restart                   |
+
+The next `pca market-refresh` / GUI **Refresh prices** / web **Refresh
+prices** call will then hit the newly-enabled adapters. The HTTP cache
+(1 h TTL by default) is keyed by request payload, not by credentials, so
+swapping an invalid key for a valid one will usually force a fresh call
+anyway - but if you need to be sure, delete
+`<PCA_CACHE_DIR>/http_cache.sqlite3` first.
+
+**Restricting which adapters run.** Even with every key filled in, you
+can narrow the set with `PCA_ENABLE_ADAPTERS`:
+
+```bash
+# Only hit Best Buy + eBay on this run.
+PCA_ENABLE_ADAPTERS=bestbuy,ebay pca market-refresh --out fresh.json
+```
+
+Valid names: `bestbuy`, `ebay`, `ebay-sold`, `amazon-paapi`, `newegg`,
+plus any third-party plugin names if `PCA_ALLOW_PLUGINS=true`.
+
+**Rotating / revoking a key.**
+
+1. Issue the new key in the retailer's developer portal.
+2. Update `.env` (or `setx` / `export`) with the new value.
+3. Revoke the old key in the portal.
+4. Restart the UI that's running and confirm with `pca doctor`.
+
+**Security hygiene.**
+
+- `.env` is already in `.gitignore`; double-check before committing.
+- Prefer real environment variables on shared / CI machines so the
+  secret never lives on disk.
+- Amazon PA-API and eBay both issue revocable credentials - rotate any
+  key you suspect has leaked and re-run `pca doctor`.
+- Keys are treated as `SecretStr` internally, so they never appear in
+  logs or serialized reports.
+
+### 2.4 Deal-ranker weights
 
 Tune how deals are sorted (defaults calibrated against KGRs):
 
@@ -269,12 +386,38 @@ pca report --stub snap.json --out-dir out/
 
 ### 4.4 `pca market`
 
-Summarize a cached market snapshot fixture. Live API refresh is
-per-adapter (see [§8](#8-retailer-adapters-and-plugins)).
+Summarize a cached market snapshot fixture.
 
 ```bash
 pca market --market tests/data/market_snapshots/snapshot_normal.json
 ```
+
+### 4.4b `pca market-refresh`
+
+Query every configured retailer adapter and write a fresh
+`MarketSnapshot` JSON. The file produced is interchangeable with the
+bundled default and with fixtures under `tests/data/market_snapshots/`.
+
+```bash
+# Use the current machine as the query source (detect on the fly).
+pca market-refresh --out my_market.json
+
+# Restrict to specific adapters.
+pca market-refresh --out my_market.json --sources bestbuy,ebay
+
+# Use a saved snapshot to drive queries (useful on a headless runner
+# refreshing the bundled default for the next release).
+pca market-refresh --stub snap.json --out resources/market/default_market.json \
+                   --id pca_default_market_v1
+```
+
+Requires retailer credentials in the environment (see §8). Adapters
+with missing credentials are silently skipped. If every adapter fails
+the command exits with a `MarketError`; if only some fail you'll see a
+"Partial success" warning and the partial result is still written.
+
+> **Tip.** The output is a drop-in replacement for the `--market` flag
+> on `recommend`, `quote`, `gui`, and `serve`.
 
 ### 4.5 `pca recommend`
 
@@ -316,7 +459,36 @@ pca quote \
 Tax rates come from `resources/catalogs/us_tax_rates.yaml`. Unknown ZIPs
 fall back to the national average.
 
-### 4.7 `pca serve`
+### 4.7 `pca doctor`
+
+Print a retailer-adapter status table - which adapters are active, and
+for the inactive ones exactly which env var to set. Run this first
+whenever `market-refresh` says "no adapters available". See
+[Section 2.3 - Managing API keys](#23-managing-api-keys) for how to set
+and rotate those credentials.
+
+```bash
+pca doctor
+```
+
+Example output (no creds):
+
+```
+Adapter       State     Detail
+------------  --------  ----------------------------------------
+bestbuy       inactive  missing PCA_BESTBUY_API_KEY - sign up at developer.bestbuy.com
+ebay          inactive  missing PCA_EBAY_CLIENT_ID and PCA_EBAY_CLIENT_SECRET
+ebay-sold     inactive  missing PCA_EBAY_CLIENT_ID / PCA_EBAY_CLIENT_SECRET (shares credentials with 'ebay')
+amazon-paapi  inactive  missing: PCA_AMAZON_ACCESS_KEY, PCA_AMAZON_SECRET_KEY, PCA_AMAZON_ASSOC_TAG
+newegg        inactive  missing PCA_NEWEGG_FEED_PATH (local file only - scraping not supported)
+
+Summary: 0/5 first-party adapters active.
+
+No adapters active. Set at least one set of credentials (see the Detail
+column above) and re-run pca doctor.
+```
+
+### 4.8 `pca serve`
 
 Launch the FastAPI + HTMX dashboard. See [§5](#5-web-dashboard-pca-serve).
 
@@ -550,10 +722,89 @@ just skips that source.
 
 ### 8.2 Refreshing prices
 
-Live refresh is per-adapter; run your adapter's refresh routine (e.g.,
-in a script) and point `pca market --market <snapshot.json>` at the
-output. A `pca market refresh` one-shot will land when credentials are
-required less often.
+Prices live in a `MarketSnapshot` JSON - either the bundled default
+under `resources/market/default_market.json` or whatever you point
+`--market` at. The snapshot has a `generated_at` timestamp which the
+UIs use to flag stale data (> 14 days shows a warning pill).
+
+**Setup - one time.** Populate the retailer credentials you want to
+use as environment variables (or in a local `.env` next to the exe).
+For scope, precedence, rotation, and per-UI reload rules see
+[Section 2.3 - Managing API keys](#23-managing-api-keys).
+
+```bash
+# Best Buy Developer (free, US-only; 50k req/day)
+export PCA_BESTBUY_API_KEY=...
+
+# eBay Browse + Insights (both use the same OAuth client)
+export PCA_EBAY_CLIENT_ID=...
+export PCA_EBAY_CLIENT_SECRET=...
+
+# Amazon PA-API 5 (requires an approved Associate account)
+export PCA_AMAZON_ACCESS_KEY=...
+export PCA_AMAZON_SECRET_KEY=...
+export PCA_AMAZON_ASSOC_TAG=yourtag-20
+
+# Newegg affiliate feed (local file, no scraping)
+export PCA_NEWEGG_FEED_PATH=./newegg_feed.tsv
+
+# Restrict this run to a subset of adapters (optional):
+export PCA_ENABLE_ADAPTERS=bestbuy,ebay
+```
+
+The factory auto-registers every adapter whose credentials are present;
+`PCA_ENABLE_ADAPTERS` is an explicit allow-list for when you want to
+restrict a single run (e.g., "eBay only" during a rate-limit backoff).
+Requesting an adapter with missing credentials is a **loud** failure -
+the UI / CLI surfaces a clear "PCA_X is not set" message so you fix
+the env rather than silently producing an empty catalog.
+
+**Three ways to refresh:**
+
+1. **CLI one-shot** (recommended for headless jobs / CI):
+
+   ```bash
+   export PCA_BESTBUY_API_KEY=...
+   export PCA_EBAY_CLIENT_ID=...
+   export PCA_EBAY_CLIENT_SECRET=...
+   pca market-refresh --out my_market.json
+   ```
+
+2. **Native GUI** (`pca-gui`): the **Recommend** tab has a
+   "Refresh prices" button that runs the same orchestrator on a worker
+   thread so the window stays responsive. Partial failures surface as
+   a warning dialog; the newly fetched catalog replaces the in-memory
+   state immediately.
+
+3. **Web dashboard** (`pca serve`): the Recommend card has a
+   "Refresh prices" button that POSTs to `/htmx/market/refresh`. A
+   confirmation dialog warns you that live APIs are about to be hit.
+   The cached result is held in the server's memory for the rest of
+   the session; set `--market` or call `/api/market/refresh` again to
+   replace it.
+
+**Partial success semantics.** A 429 from eBay does not destroy the
+results from Best Buy. Adapter errors are collected and returned in
+`RefreshResult.errors`; the UI renders them below the plan table.
+
+**Response cache.** Every retailer HTTP response is cached for **1 hour
+by default** under `PCA_CACHE_DIR` (see §2.1). This means clicking
+"Refresh prices" twice in a row only hits the network once - useful when
+recovering from a partial failure, and polite to the retailer APIs.
+Override the TTL by setting a custom `cache_ttl_seconds` when
+constructing `default_transport_factory` from a plugin, or clear the
+cache manually with `python -c "from pca.market.cache import Cache;
+Cache('http:https___api.bestbuy.com').clear()"` (one namespace per
+retailer).
+
+**How queries are generated.** `build_queries(snapshot)` inspects each
+component and synthesizes a short retailer-friendly query per
+`ComponentKind` (e.g., "DDR5 32GB 6000MT/s" for RAM, "CPU LGA1700"
+for CPU). See `src/pca/market/refresh.py` if you want to tune it.
+
+**Staleness banner.** The Recommend tab (GUI) and landing page (web)
+render the age of the current market snapshot. Over 14 days old and
+the label turns amber with a "consider refreshing" hint.
 
 ### 8.3 Writing a plugin
 

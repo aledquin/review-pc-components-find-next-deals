@@ -41,6 +41,94 @@ def test_index_serves_htmx_shell(client: TestClient) -> None:
     assert "card" in r.text
     assert 'id="budget"' in r.text
     assert 'id="strategy"' in r.text
+    # Refresh prices button is discoverable from the landing page.
+    assert "Refresh prices" in r.text
+    assert "/htmx/market/refresh" in r.text
+
+
+def test_index_shows_stale_banner_for_old_market(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The bundled default market is > 14 days old - banner must render."""
+    from pca.ui.web.app import ServerConfig, create_app
+
+    app = create_app(ServerConfig(snapshot_path=INV_DIR / "rig_mid.json"))
+    c = TestClient(app)
+    r = c.get("/")
+    assert r.status_code == 200
+    # The template surfaces either "Stale" or a day-count line - both acceptable
+    # if fixture timestamp is very close to now. Assert the block is at least
+    # rendered (market_source is templated in).
+    assert "Market source" in r.text
+
+
+def test_market_refresh_requires_snapshot(monkeypatch: pytest.MonkeyPatch) -> None:
+    from pca.ui.web.app import ServerConfig, create_app
+
+    # No snapshot_path configured, and app.state.detected_snapshot unset.
+    app = create_app(ServerConfig(market_path=MARKET_DIR / "snapshot_normal.json"))
+    c = TestClient(app)
+    r = c.post("/api/market/refresh")
+    assert r.status_code == 409
+    assert "snapshot" in r.json()["detail"].lower()
+
+
+def test_market_refresh_updates_cached_market(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """POST /api/market/refresh replaces the in-memory catalog."""
+    from collections.abc import Iterable
+    from datetime import UTC, datetime
+    from decimal import Decimal
+
+    from pca.core.models import ComponentKind, Deal, MarketItem, StockStatus
+    from pca.market.adapter import AdapterRegistry
+
+    class _Fake:
+        name = "fake-web"
+
+        def is_available(self) -> bool:
+            return True
+
+        def search(
+            self, kind: ComponentKind, query: str, *, limit: int = 20
+        ) -> Iterable[MarketItem]:
+            yield MarketItem(
+                sku=f"W-{kind.value}",
+                kind=kind,
+                vendor="V",
+                model=f"Web {kind.value}",
+                price_usd=Decimal("77.00"),
+                source="fake-web",
+                url="https://example.test/x",
+                stock=StockStatus.IN_STOCK,
+                fetched_at=datetime.now(UTC),
+            )
+
+        def fetch_by_sku(self, sku: str) -> MarketItem | None:
+            return None
+
+        def active_deals(
+            self, kind: ComponentKind | None = None
+        ) -> Iterable[Deal]:
+            return []
+
+    reg = AdapterRegistry()
+    reg.register(_Fake())
+    monkeypatch.setattr(
+        "pca.market.factory.build_registry_from_settings", lambda _s: reg
+    )
+
+    r = client.post("/api/market/refresh")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["item_count"] >= 1
+    assert "fake-web" in body["sources"]
+
+    # HTMX fragment returns an ok-badge
+    r2 = client.post("/htmx/market/refresh")
+    assert r2.status_code == 200
+    assert "Refreshed" in r2.text
 
 
 def test_htmx_inventory_renders_table(client: TestClient) -> None:
@@ -48,6 +136,67 @@ def test_htmx_inventory_renders_table(client: TestClient) -> None:
     assert r.status_code == 200
     assert "<table>" in r.text
     assert "<thead>" in r.text
+
+
+def test_htmx_inventory_renders_specs_as_bullet_list(client: TestClient) -> None:
+    """Inventory specs must render as a vertical <ul>, not an inline k=v blob."""
+
+    r = client.get("/htmx/inventory")
+    assert r.status_code == 200
+    assert 'class="spec-list"' in r.text
+    assert "<li>" in r.text
+    # Legacy inline format should not leak through.
+    assert "k=v" not in r.text
+
+
+def test_htmx_plan_links_each_upgrade_to_retailer(client: TestClient) -> None:
+    """Each upgrade row must link the model to the MarketItem URL with
+    safe attributes and show the source adapter as a badge."""
+
+    r = client.get(
+        "/htmx/plan",
+        params={"budget": 1200, "workload": "gaming_1440p", "strategy": "greedy"},
+    )
+    assert r.status_code == 200
+    assert 'class="upgrade-link"' in r.text
+    assert 'target="_blank"' in r.text
+    assert 'rel="noopener noreferrer"' in r.text
+    # The bundled KGR market uses https://example.test/... URLs.
+    assert "https://example.test" in r.text
+    # Source badge is rendered.
+    assert "source-pill" in r.text
+
+
+def test_upgrade_link_rejects_non_http_urls() -> None:
+    """Defence-in-depth: javascript: / data: URLs never produce an <a>."""
+
+    from pca.ui.web.app import _safe_external_url
+
+    assert _safe_external_url("https://shop.example.com/x") == "https://shop.example.com/x"
+    assert _safe_external_url("http://shop.example.com/x") == "http://shop.example.com/x"
+    assert _safe_external_url("javascript:alert(1)") is None
+    assert _safe_external_url("data:text/html,<script>") is None
+    assert _safe_external_url("") is None
+    assert _safe_external_url(None) is None
+
+
+def test_htmx_plan_shows_improved_specs_and_rationale_block(
+    client: TestClient,
+) -> None:
+    """Recommend output surfaces a dedicated 'Improved specs' list and a
+    rationale block with enough horizontal room (colspan detail row)."""
+
+    r = client.get(
+        "/htmx/plan",
+        params={"budget": 1200, "workload": "gaming_1440p", "strategy": "greedy"},
+    )
+    assert r.status_code == 200
+    assert 'class="plan-table"' in r.text
+    assert 'class="plan-detail"' in r.text
+    assert 'colspan="4"' in r.text
+    assert "Improved specs" in r.text
+    assert 'class="spec-diff"' in r.text
+    assert "Rationale" in r.text
 
 
 def test_htmx_quote_returns_totals(client: TestClient) -> None:

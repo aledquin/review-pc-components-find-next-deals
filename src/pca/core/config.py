@@ -35,10 +35,17 @@ class Settings(BaseSettings):
     ebay_client_id: SecretStr | None = None
     ebay_client_secret: SecretStr | None = None
     keepa_api_key: SecretStr | None = None
+    newegg_feed_path: Path | None = None
 
     # Feature flags.
     enable_scrapers: bool = False
     enable_pcpartpicker_compat: bool = False
+    # Comma-separated allow-list of adapter names to instantiate.
+    # Empty = auto (use every adapter whose credentials are present).
+    enable_adapters: str = ""
+    allow_plugins: bool = False
+    # Network timeout used by the default httpx transport (seconds).
+    adapter_http_timeout: float = Field(default=10.0, gt=0.0)
 
     # Deal-ranker weights (defaults calibrated against KGRs).
     deal_weight_price: float = Field(default=0.5, ge=0.0)

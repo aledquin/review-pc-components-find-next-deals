@@ -240,3 +240,67 @@ def test_load_last_snapshot_returns_none_when_missing(
     monkeypatch.setenv("PCA_USER_DATA_DIR", str(tmp_path / "pca"))
     c = GuiController()
     assert c.load_last_snapshot() is None
+
+
+def test_refresh_market_prices_replaces_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """refresh_market_prices delegates to refresh_market and updates state."""
+    from collections.abc import Iterable
+    from datetime import UTC, datetime
+    from decimal import Decimal
+
+    from pca.core.models import ComponentKind, Deal, MarketItem, StockStatus
+    from pca.market.adapter import AdapterRegistry
+
+    class _Fake:
+        name = "fake"
+
+        def is_available(self) -> bool:
+            return True
+
+        def search(
+            self, kind: ComponentKind, query: str, *, limit: int = 20
+        ) -> Iterable[MarketItem]:
+            yield MarketItem(
+                sku=f"{kind.value}-X",
+                kind=kind,
+                vendor="V",
+                model=f"M-{kind.value}",
+                price_usd=Decimal("50.00"),
+                source="fake",
+                url="https://example.test/x",
+                stock=StockStatus.IN_STOCK,
+                fetched_at=datetime.now(UTC),
+            )
+
+        def fetch_by_sku(self, sku: str) -> MarketItem | None:
+            return None
+
+        def active_deals(
+            self, kind: ComponentKind | None = None
+        ) -> Iterable[Deal]:
+            return []
+
+    reg = AdapterRegistry()
+    reg.register(_Fake())
+
+    c = GuiController()
+    c.load_snapshot(INV_DIR / "rig_mid.json")
+    before = len(c.state.market_items)
+    result = c.refresh_market_prices(registry=reg)
+    assert len(result.items) >= 1
+    # State is updated with the fresh catalog.
+    assert c.state.market_items == result.items
+    assert "fake" in c.state.market_sources
+    assert c.state.market_generated_at is not None
+    # Even if the default market was loaded before, the refresh replaces it.
+    assert len(c.state.market_items) != before or before == 0
+
+
+def test_refresh_market_prices_requires_snapshot() -> None:
+    from pca.market.adapter import AdapterRegistry
+
+    c = GuiController()
+    with pytest.raises(RuntimeError, match="snapshot"):
+        c.refresh_market_prices(registry=AdapterRegistry())

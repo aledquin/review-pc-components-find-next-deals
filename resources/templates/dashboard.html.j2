@@ -146,6 +146,99 @@
     .kvs { display: grid; grid-template-columns: max-content 1fr; gap: .3rem .75rem; }
     .kvs dt { color: var(--muted); font-size: .82rem; }
     .kvs dd { margin: 0; font-family: var(--mono); font-size: .85rem; }
+    /* Vertical spec list used by the Inventory table */
+    .spec-list, .spec-diff {
+      list-style: none; padding: 0; margin: 0;
+      display: flex; flex-direction: column; gap: .2rem;
+    }
+    .spec-list li, .spec-diff li {
+      display: flex; align-items: baseline; gap: .5rem;
+      padding: .15rem 0;
+      border-bottom: 1px dashed var(--border);
+      font-size: .85rem;
+    }
+    .spec-list li:last-child, .spec-diff li:last-child { border-bottom: 0; }
+    .spec-k {
+      color: var(--muted);
+      min-width: 9rem; flex: 0 0 auto;
+      text-transform: capitalize;
+    }
+    .spec-v {
+      font-family: var(--mono);
+      color: var(--text); word-break: break-word;
+    }
+    .spec-diff .spec-from {
+      color: var(--muted); text-decoration: line-through;
+    }
+    .spec-diff .spec-to {
+      color: var(--accent-2); font-weight: 600;
+    }
+    .spec-diff .spec-arrow { color: var(--muted); margin: 0 .15rem; }
+    .spec-diff .spec-tag {
+      margin-left: auto;
+      font-size: .7rem; text-transform: uppercase; letter-spacing: .05em;
+      color: var(--muted); border: 1px solid var(--border);
+      border-radius: 999px; padding: 0 .5rem;
+    }
+    .spec-diff .spec-new .spec-tag { color: var(--accent-2); border-color: var(--accent-2); }
+    .spec-diff .spec-same { opacity: .6; }
+    .spec-diff .spec-same .spec-tag { opacity: .8; }
+    /* Upgrade-plan detail row */
+    .plan-table td { vertical-align: top; }
+    .plan-table .kind-pill {
+      text-transform: uppercase; font-weight: 600; color: var(--accent);
+      border-color: var(--accent);
+    }
+    .plan-row td { padding-bottom: .3rem; }
+    .plan-row .upgrade-to {
+      font-size: .95rem;
+      display: flex; align-items: baseline; flex-wrap: wrap; gap: .35rem;
+    }
+    .upgrade-link {
+      color: var(--accent);
+      text-decoration: none;
+      border-bottom: 1px dashed transparent;
+    }
+    .upgrade-link:hover { border-bottom-color: var(--accent); text-decoration: none; }
+    .upgrade-link:focus-visible {
+      outline: 2px solid var(--accent); outline-offset: 2px;
+      border-radius: 2px;
+    }
+    .upgrade-link .external-icon {
+      font-size: .7em; margin-left: .15rem; color: var(--muted);
+      vertical-align: .15em;
+    }
+    .upgrade-link:hover .external-icon { color: var(--accent); }
+    .pill.source-pill {
+      text-transform: uppercase; font-weight: 600; letter-spacing: .05em;
+      color: var(--accent-2); border-color: var(--accent-2);
+      background: transparent;
+    }
+    .plan-row .replaces {
+      color: var(--muted); font-size: .78rem; margin-top: .15rem;
+    }
+    .plan-row .uplift-pos { color: var(--accent-2); font-weight: 600; }
+    .plan-row .uplift-zero { color: var(--muted); }
+    .plan-detail > td {
+      background: var(--panel-2);
+      border-bottom: 2px solid var(--border);
+      padding: .4rem 1rem 1rem;
+    }
+    .detail-grid {
+      display: grid; gap: 1rem;
+      grid-template-columns: 1fr;
+    }
+    @media (min-width: 760px) {
+      .detail-grid { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); }
+    }
+    .detail-title {
+      color: var(--muted); font-size: .72rem; text-transform: uppercase;
+      letter-spacing: .08em; margin: 0 0 .35rem;
+    }
+    .detail-block .rationale {
+      margin: 0; font-size: .92rem; line-height: 1.55; color: var(--text);
+      white-space: pre-wrap;
+    }
     footer {
       text-align: center; color: var(--muted); font-size: .8rem; padding: 1.5rem 1rem;
     }
@@ -203,6 +296,32 @@
         <span class="badge">budget-constrained</span>
       </div>
       <div class="card-body">
+        <div class="form-row" style="flex-direction:column; gap:8px;">
+          <div id="market-status" class="muted" style="font-size:13px;">
+            {%- if market_age_days is not none %}
+              Market source: <b>{{ market_source }}</b>.
+              {% if market_is_stale -%}
+                <span style="color:#c87a00;"><b>Stale</b> ({{ market_age_days }} days old - consider refreshing).</span>
+              {%- elif market_age_days == 0 -%}
+                Just refreshed.
+              {%- else -%}
+                {{ market_age_days }} day(s) old.
+              {%- endif %}
+            {%- else %}
+              No market data loaded yet.
+            {%- endif %}
+          </div>
+          <div class="actions">
+            <button type="button" class="ghost"
+                    hx-post="/htmx/market/refresh"
+                    hx-target="#market-status"
+                    hx-indicator="#market-busy"
+                    hx-confirm="Refresh prices from live retailer APIs? Requires API keys to be configured.">
+              Refresh prices
+            </button>
+            <span id="market-busy" class="htmx-indicator">refreshing...</span>
+          </div>
+        </div>
         <form @submit.prevent>
           <div class="form-row">
             <label for="budget">Budget (USD)</label>

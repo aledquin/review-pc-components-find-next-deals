@@ -10,11 +10,17 @@ MainWindow wires up to buttons.
 from __future__ import annotations
 
 import json
+import os
+import sys
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:  # avoid pulling heavy deps at import time
+    from pca.market.adapter import AdapterRegistry
+    from pca.market.refresh import RefreshResult
 
 from pca.budget.optimizer_greedy import optimize_greedy
 from pca.budget.optimizer_ilp import optimize_ilp
@@ -29,10 +35,42 @@ from pca.core.models import (
     UpgradePlan,
     Workload,
 )
+from pca.core.resources import resource_path
 from pca.deprecation.rules import evaluate_all
 from pca.inventory.probe import detect_probe
 from pca.quoting.builder import build_quote
 from pca.reporting.builder import write_quote, write_report
+
+
+# ---------------------------------------------------------------------------
+# OS-native user data dir (% LOCALAPPDATA%/pca on Windows, etc.)
+# ---------------------------------------------------------------------------
+
+
+def user_data_dir() -> Path:
+    """Return the per-user data directory we own.
+
+    Honors ``PCA_USER_DATA_DIR`` for tests / portable installs. Otherwise
+    picks the OS convention:
+
+    - Windows : ``%LOCALAPPDATA%\\pca``
+    - macOS   : ``~/Library/Application Support/pca``
+    - Linux   : ``$XDG_DATA_HOME/pca`` or ``~/.local/share/pca``
+    """
+    override = os.environ.get("PCA_USER_DATA_DIR")
+    if override:
+        return Path(override)
+    if sys.platform.startswith("win"):
+        base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~\\AppData\\Local")
+        return Path(base) / "pca"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "pca"
+    xdg = os.environ.get("XDG_DATA_HOME")
+    base = Path(xdg) if xdg else Path.home() / ".local" / "share"
+    return base / "pca"
+
+
+_LAST_SNAPSHOT_NAME = "last_snapshot.json"
 
 
 @dataclass
@@ -46,6 +84,8 @@ class AppState:
     last_plan: UpgradePlan | None = None
     last_quote: Quote | None = None
     last_errors: list[str] = field(default_factory=list)
+    market_generated_at: datetime | None = None
+    market_sources: tuple[str, ...] = ()
 
 
 _STRATEGIES: dict[str, Any] = {
@@ -74,16 +114,26 @@ class GuiController:
 
         Uses :func:`pca.inventory.probe.detect_probe` to pick the right OS
         probe (WMI on Windows, ``lshw`` on Linux, ``system_profiler`` on
-        macOS). Any probe failure propagates unchanged so callers can show
-        a meaningful error.
+        macOS). On success the snapshot is also auto-persisted to
+        :func:`user_data_dir`/``last_snapshot.json`` so the next launch of
+        the GUI can pick up where the user left off.
 
-        This call is synchronous and can take several seconds on Windows
-        (WMI queries). GUIs should invoke it from a worker thread.
+        Any probe failure propagates unchanged so callers can show a
+        meaningful error. This call is synchronous and can take several
+        seconds on Windows (WMI queries); GUIs should invoke it from a
+        worker thread.
         """
         probe = detect_probe()
         snap = probe.collect()
         self.state.snapshot = snap
         self.state.deprecations = tuple(evaluate_all(snap))
+        try:
+            target = user_data_dir() / _LAST_SNAPSHOT_NAME
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(snap.model_dump_json(indent=2), encoding="utf-8")
+        except OSError:
+            # Don't fail the whole detection just because we can't cache.
+            pass
         return snap
 
     def save_snapshot(self, path: Path) -> Path:
@@ -95,6 +145,79 @@ class GuiController:
             self.state.snapshot.model_dump_json(indent=2), encoding="utf-8"
         )
         return path
+
+    def load_last_snapshot(self) -> SystemSnapshot | None:
+        """Restore the most recently detected snapshot, if any.
+
+        Called automatically by the GUI at startup. Returns ``None`` when
+        the user hasn't run Detect on this machine yet, or when the cache
+        file is missing / unreadable.
+        """
+        path = user_data_dir() / _LAST_SNAPSHOT_NAME
+        if not path.is_file():
+            return None
+        try:
+            snap = SystemSnapshot.model_validate_json(
+                path.read_text(encoding="utf-8")
+            )
+        except Exception:
+            return None
+        self.state.snapshot = snap
+        self.state.deprecations = tuple(evaluate_all(snap))
+        return snap
+
+    def refresh_market_prices(
+        self,
+        *,
+        registry: "AdapterRegistry | None" = None,
+    ) -> "RefreshResult":
+        """Query live adapters and replace the in-memory catalog.
+
+        Meant to be called from a Qt worker thread. Returns the raw
+        :class:`RefreshResult` so the caller can display partial-success
+        warnings, source list, and the new ``generated_at`` timestamp.
+
+        Args:
+            registry: Optional adapter registry to use. If ``None`` the
+                shared process registry is used - same as the CLI.
+
+        Raises:
+            RuntimeError: if no snapshot is loaded.
+            MarketError: if no adapters are registered / available.
+        """
+        from pca.core.config import get_settings
+        from pca.market.factory import build_registry_from_settings
+        from pca.market.refresh import refresh_market
+
+        if self.state.snapshot is None:
+            raise RuntimeError(
+                "refresh requires a snapshot - Detect or Load one first"
+            )
+
+        reg = (
+            registry
+            if registry is not None
+            else build_registry_from_settings(get_settings())
+        )
+        result = refresh_market(self.state.snapshot, reg)
+        self.state.market_items = result.items
+        self.state.deals = result.deals
+        self.state.market_generated_at = result.generated_at
+        self.state.market_sources = result.sources
+        return result
+
+    def load_default_market(
+        self,
+    ) -> tuple[tuple[MarketItem, ...], tuple[Deal, ...]]:
+        """Load the bundled ``resources/market/default_market.json``.
+
+        The default catalog ships with the app so the GUI / web dashboard
+        can produce recommendations on first launch without any extra
+        user input. Prices are a point-in-time snapshot - refresh with
+        the live adapters for current numbers.
+        """
+        path = resource_path("market", "default_market.json")
+        return self.load_market(Path(path))
 
     def load_market(self, path: Path) -> tuple[tuple[MarketItem, ...], tuple[Deal, ...]]:
         raw = json.loads(path.read_text(encoding="utf-8"))

@@ -28,6 +28,7 @@ from pca.core.models import (
 )
 from pca.deprecation.rules import evaluate_all
 from pca.inventory.probe import detect_probe
+from pca.market.adapter import AdapterRegistry
 from pca.quoting.builder import build_quote
 from pca.reporting.builder import write_quote, write_report
 
@@ -159,7 +160,7 @@ def market(
         ),
     ],
 ) -> None:
-    """Summarize a cached market snapshot. Live API calls land in Wave 1.x."""
+    """Summarize a cached market snapshot. Use ``market-refresh`` for live data."""
     items, deals = _load_market(market_file)
     table = Table(title=f"Market snapshot ({len(items)} items, {len(deals)} deals)")
     for col in ("Kind", "SKU", "Model", "Price", "Source"):
@@ -173,6 +174,136 @@ def market(
             item.source,
         )
     console.print(table)
+
+
+# ---------------------------------------------------------------------------
+# pca market-refresh: live data from every configured retailer adapter
+# ---------------------------------------------------------------------------
+
+
+def _build_registry(settings: object) -> "AdapterRegistry":
+    """Build an :class:`AdapterRegistry` for the current run.
+
+    Delegates to :func:`pca.market.factory.build_registry_from_settings`,
+    which adds retailer adapters whose credentials are configured and
+    loads plugins when ``PCA_ALLOW_PLUGINS=true``. Kept as a thin shim
+    so tests can monkeypatch this symbol with a fake registry without
+    touching the factory.
+    """
+    from pca.core.config import Settings
+    from pca.market.factory import build_registry_from_settings
+
+    if not isinstance(settings, Settings):
+        return AdapterRegistry()
+    return build_registry_from_settings(settings)
+
+
+@app.command()
+def doctor() -> None:
+    """Report which retailer adapters are configured and why.
+
+    Prints a table of first-party adapters and marks each as
+    **active** (creds present, will be used) or **inactive** (missing
+    credentials or excluded by ``PCA_ENABLE_ADAPTERS``). Use this when
+    ``pca market-refresh`` says "no adapters available" - the row's
+    ``Detail`` column tells you exactly which env var to set.
+    """
+    from pca.market.status import describe_adapter_status, format_status_table
+
+    settings = get_settings()
+    report = describe_adapter_status(settings)
+    console.print(format_status_table(report))
+
+    active = [r for r in report if r.active]
+    if not active:
+        console.print(
+            "\n[yellow]No adapters active.[/yellow] Set at least one set of "
+            "credentials (see the Detail column above) and re-run "
+            "[bold]pca doctor[/bold]."
+        )
+        return
+    console.print(
+        "\n[green]OK.[/green] "
+        f"{len(active)} adapter(s) ready: "
+        + ", ".join(r.name for r in active)
+    )
+
+
+@app.command("market-refresh")
+def market_refresh(
+    stub_path: Annotated[
+        Path | None,
+        typer.Option(
+            "--stub",
+            help="Snapshot JSON to drive query generation. Defaults to auto-detect.",
+        ),
+    ] = None,
+    out: Annotated[
+        Path,
+        typer.Option(
+            "--out",
+            help="Where to write the refreshed MarketSnapshot JSON.",
+        ),
+    ] = Path("refreshed_market.json"),
+    sources: Annotated[
+        str | None,
+        typer.Option(
+            "--sources",
+            help="Comma-separated adapter names to use. Defaults to all registered.",
+        ),
+    ] = None,
+    identifier: Annotated[
+        str,
+        typer.Option("--id", help="'id' field written into the output snapshot."),
+    ] = "refreshed_market",
+) -> None:
+    """Hit every configured retailer adapter and write a fresh MarketSnapshot.
+
+    Requires retailer credentials to be set via environment variables
+    (``PCA_BESTBUY_API_KEY``, ``PCA_EBAY_CLIENT_ID`` / ``_SECRET``,
+    ``PCA_AMAZON_*``). Adapters with missing credentials are skipped.
+
+    Typical use cases:
+
+    - **End user**: ``pca market-refresh --out my_market.json`` then feed
+      it to ``pca recommend --market my_market.json`` for live prices.
+    - **Maintainer**: ``pca market-refresh --out resources/market/default_market.json``
+      to regenerate the catalog bundled with the next release.
+    """
+    from pca.market.refresh import refresh_market, write_market_snapshot
+
+    snapshot = (
+        _load_stub_snapshot(stub_path) if stub_path else detect_probe().collect()
+    )
+    settings = get_settings()
+    registry = _build_registry(settings)
+    if sources:
+        wanted = {s.strip() for s in sources.split(",") if s.strip()}
+        # Drop adapters not in the allow-list.
+        for adapter in tuple(registry.all()):
+            if adapter.name not in wanted:
+                registry.unregister(adapter.name)
+
+    result = refresh_market(snapshot, registry)
+    written = write_market_snapshot(result, out, identifier=identifier)
+
+    table = Table(title=f"Market refresh - {len(result.items)} items")
+    for col in ("Kind", "SKU", "Model", "Price", "Source"):
+        table.add_column(col)
+    for item in sorted(result.items, key=lambda i: (i.kind.value, i.price_usd)):
+        table.add_row(
+            item.kind.value,
+            item.sku,
+            item.model,
+            f"${item.price_usd:.2f}",
+            item.source,
+        )
+    console.print(table)
+    console.print(f"[green]Wrote {written}[/green]")
+    if result.errors:
+        console.print("[yellow]Partial success - some adapters errored:[/yellow]")
+        for err in result.errors:
+            console.print(f"  - {err}")
 
 
 @app.command()

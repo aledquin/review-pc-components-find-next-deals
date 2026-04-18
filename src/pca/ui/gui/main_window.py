@@ -10,6 +10,7 @@ here are dumb - they call the controller and render whatever comes back.
 
 from __future__ import annotations
 
+import html as _html
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
@@ -40,6 +41,11 @@ from PyQt6.QtWidgets import (
 )
 
 from pca.core.models import Workload
+from pca.ui.common import (
+    render_spec_diff_html,
+    render_specs_list_html,
+    safe_external_url,
+)
 from pca.ui.gui.controller import GuiController
 
 _WORKLOADS: list[tuple[str, Workload]] = [
@@ -63,15 +69,38 @@ _STRATEGIES: list[tuple[str, str]] = [
 # ---------------------------------------------------------------------------
 
 
-def _make_table(headers: list[str]) -> QTableWidget:
+def _make_table(
+    headers: list[str],
+    *,
+    initial_widths: list[int] | None = None,
+) -> QTableWidget:
+    """Build a read-only table the user can freely resize and reorder.
+
+    All columns are **Interactive** (drag a divider to resize), the last
+    column stretches to absorb empty space, columns can be reordered by
+    dragging the header, and row heights fit their contents so rich-HTML
+    cells render fully without clipping.
+    """
+
     t = QTableWidget(0, len(headers))
     t.setHorizontalHeaderLabels(headers)
     t.verticalHeader().setVisible(False)
+    t.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
     t.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
     t.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
     t.setAlternatingRowColors(True)
+    t.setWordWrap(True)
+    t.setShowGrid(True)
     hdr = t.horizontalHeader()
-    hdr.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+    hdr.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+    hdr.setStretchLastSection(True)
+    hdr.setSectionsMovable(True)
+    hdr.setHighlightSections(False)
+    hdr.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+    if initial_widths:
+        for i, width in enumerate(initial_widths):
+            if width > 0 and i < len(headers):
+                t.setColumnWidth(i, width)
     return t
 
 
@@ -80,6 +109,83 @@ def _hline() -> QFrame:
     line.setFrameShape(QFrame.Shape.HLine)
     line.setFrameShadow(QFrame.Shadow.Sunken)
     return line
+
+
+def _make_html_label(text: str) -> QLabel:
+    """Build a rich-text QLabel for use as a table cell widget.
+
+    - ``open_external_links`` so <a> tags launch the default browser.
+    - ``word_wrap`` so rationale / long specs reflow in narrow columns.
+    - Selectable text so users can copy model names or spec values.
+    """
+
+    label = QLabel(text)
+    label.setTextFormat(Qt.TextFormat.RichText)
+    label.setWordWrap(True)
+    label.setOpenExternalLinks(True)
+    label.setTextInteractionFlags(
+        Qt.TextInteractionFlag.TextSelectableByMouse
+        | Qt.TextInteractionFlag.LinksAccessibleByMouse
+        | Qt.TextInteractionFlag.LinksAccessibleByKeyboard
+    )
+    label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+    label.setContentsMargins(6, 4, 6, 4)
+    label.setStyleSheet("background: transparent;")
+    return label
+
+
+def _format_upgrade_html(
+    vendor: str,
+    model: str,
+    url: str | None,
+    source: str | None,
+    replaces_vendor: str | None = None,
+    replaces_model: str | None = None,
+) -> str:
+    """Render the "Upgrade" cell: vendor, linked model, source badge,
+    and a small 'replaces <old part>' line underneath."""
+
+    safe = safe_external_url(url)
+    esc_model = _html.escape(model)
+    if safe is not None:
+        model_html = (
+            f'<a href="{_html.escape(safe, quote=True)}" '
+            f'style="color:#4a90e2; text-decoration:none;" '
+            f'title="Open product page">'
+            f'{esc_model}'
+            f' <span style="font-size:9px; color:#8a8f9a;">&#8599;</span>'
+            f'</a>'
+        )
+    else:
+        model_html = esc_model
+    source_badge = ""
+    if source:
+        source_badge = (
+            f' <span style="color:#3a8a5a; font-size:10px; padding:0 5px; '
+            f'border:1px solid #3a8a5a; border-radius:6px;">'
+            f'{_html.escape(source)}</span>'
+        )
+    replaces = ""
+    rv = (replaces_vendor or "").strip()
+    rm = (replaces_model or "").strip()
+    if rv or rm:
+        replaces = (
+            f'<div style="color:#8a8f9a; font-size:10px; margin-top:2px;">'
+            f'replaces <b>{_html.escape(rv)} {_html.escape(rm)}</b></div>'
+        )
+    return (
+        f'<div><b>{_html.escape(vendor)}</b> {model_html}{source_badge}</div>'
+        f'{replaces}'
+    )
+
+
+def _format_uplift_html(uplift_pct: float) -> str:
+    color = "#3a8a5a" if uplift_pct > 0 else "#8a8f9a"
+    weight = "600" if uplift_pct > 0 else "400"
+    return (
+        f'<span style="color:{color}; font-weight:{weight}; '
+        f'font-family:Consolas, monospace;">+{uplift_pct:.1f}%</span>'
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -112,6 +218,30 @@ class _DetectWorker(QObject):
         self.done.emit(snap)
 
 
+class _RefreshWorker(QObject):
+    """Runs :meth:`GuiController.refresh_market_prices` on a worker thread.
+
+    Retailer HTTP calls can take tens of seconds when multiple adapters
+    are enabled. Keeping them off the GUI thread prevents the window
+    from hanging.
+    """
+
+    done = pyqtSignal(object)  # RefreshResult
+    failed = pyqtSignal(str)
+
+    def __init__(self, controller: GuiController) -> None:
+        super().__init__()
+        self._controller = controller
+
+    def run(self) -> None:
+        try:
+            result = self._controller.refresh_market_prices()
+        except Exception as exc:
+            self.failed.emit(str(exc))
+            return
+        self.done.emit(result)
+
+
 # ---------------------------------------------------------------------------
 # Tabs
 # ---------------------------------------------------------------------------
@@ -126,7 +256,10 @@ class InventoryTab(QWidget):
         self._detect_thread: QThread | None = None
         self._detect_worker: _DetectWorker | None = None
 
-        self._table = _make_table(["Kind", "Vendor", "Model", "Specs"])
+        self._table = _make_table(
+            ["Kind", "Vendor", "Model", "Specs"],
+            initial_widths=[80, 140, 280, 420],
+        )
         self._deprecations = QLabel("Load or detect a snapshot to see deprecation warnings.")
         self._deprecations.setWordWrap(True)
         self._deprecations.setStyleSheet("color: #8a8f9a; padding: 4px 0;")
@@ -178,8 +311,9 @@ class InventoryTab(QWidget):
             self._table.setItem(row, 0, QTableWidgetItem(c.kind.value))
             self._table.setItem(row, 1, QTableWidgetItem(c.vendor))
             self._table.setItem(row, 2, QTableWidgetItem(c.model))
-            specs = ", ".join(f"{k}={v}" for k, v in c.specs.items())
-            self._table.setItem(row, 3, QTableWidgetItem(specs))
+            self._table.setCellWidget(
+                row, 3, _make_html_label(render_specs_list_html(c.specs))
+            )
         deprecations = self._controller.state.deprecations
         if deprecations:
             bullets = "".join(f"<li>{w}</li>" for w in deprecations)
@@ -287,6 +421,8 @@ class RecommendTab(QWidget):
     def __init__(self, controller: GuiController) -> None:
         super().__init__()
         self._controller = controller
+        self._refresh_thread: QThread | None = None
+        self._refresh_worker: _RefreshWorker | None = None
 
         self._budget = QDoubleSpinBox()
         self._budget.setRange(100.0, 100_000.0)
@@ -306,12 +442,30 @@ class RecommendTab(QWidget):
         self._strategy.setCurrentIndex(0)
 
         self._table = _make_table(
-            ["Kind", "Vendor", "Model", "Price (USD)", "Uplift %", "Rationale"]
+            [
+                "Kind",
+                "Upgrade",
+                "Price (USD)",
+                "Uplift %",
+                "Improved specs",
+                "Rationale",
+            ],
+            initial_widths=[70, 300, 100, 90, 320, 300],
         )
         self._summary = QLabel("No plan yet.")
         self._summary.setStyleSheet(
             "font-weight: 600; padding: 6px 0; font-size: 14px;"
         )
+
+        self._market_label = QLabel()
+        self._market_label.setWordWrap(True)
+        self._refresh_btn = QPushButton("Refresh prices")
+        self._refresh_btn.clicked.connect(self._on_refresh_clicked)
+        self._refresh_progress = QProgressBar()
+        self._refresh_progress.setRange(0, 0)
+        self._refresh_progress.setVisible(False)
+        self._refresh_progress.setMaximumHeight(8)
+        self._update_market_label()
 
         run_btn = QPushButton("Recommend")
         run_btn.setDefault(True)
@@ -324,6 +478,11 @@ class RecommendTab(QWidget):
 
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel("<b>Upgrade plan</b>"))
+        layout.addWidget(self._market_label)
+        market_row = QHBoxLayout()
+        market_row.addWidget(self._refresh_btn)
+        market_row.addWidget(self._refresh_progress, 1)
+        layout.addLayout(market_row)
         layout.addLayout(form)
         btn_row = QHBoxLayout()
         btn_row.addWidget(run_btn)
@@ -332,6 +491,97 @@ class RecommendTab(QWidget):
         layout.addWidget(_hline())
         layout.addWidget(self._summary)
         layout.addWidget(self._table, 1)
+
+    def _update_market_label(self) -> None:
+        st = self._controller.state
+        if not st.market_items:
+            self._market_label.setText(
+                "<span style='color:#c87a00;'>No market data loaded yet. "
+                "Click <b>Refresh prices</b> (needs API keys) or use "
+                "<i>File &gt; Open market snapshot</i>.</span>"
+            )
+            return
+        parts: list[str] = [f"<b>{len(st.market_items)}</b> items"]
+        if st.market_sources:
+            parts.append("sources: " + ", ".join(st.market_sources))
+        if st.market_generated_at is not None:
+            from pca.market.refresh import market_snapshot_age_days
+
+            age = market_snapshot_age_days(st.market_generated_at)
+            if age <= 0:
+                parts.append("just refreshed")
+            elif age > 14:
+                parts.append(
+                    f"<span style='color:#c87a00;'><b>stale</b> ({age} days old - "
+                    f"consider refreshing)</span>"
+                )
+            else:
+                parts.append(f"{age} day(s) old")
+        self._market_label.setText(" &nbsp;|&nbsp; ".join(parts))
+
+    def _on_refresh_clicked(self) -> None:
+        if self._refresh_thread is not None:
+            return  # already running
+        if self._controller.state.snapshot is None:
+            QMessageBox.warning(
+                self,
+                "No snapshot",
+                "Load or detect a snapshot on the Inventory tab before "
+                "refreshing prices.",
+            )
+            return
+
+        self._refresh_btn.setEnabled(False)
+        self._refresh_progress.setVisible(True)
+
+        thread = QThread(self)
+        worker = _RefreshWorker(self._controller)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.done.connect(self._on_refresh_done)
+        worker.failed.connect(self._on_refresh_failed)
+        worker.done.connect(thread.quit)
+        worker.failed.connect(thread.quit)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(self._teardown_refresh_thread)
+        self._refresh_thread = thread
+        self._refresh_worker = worker
+        thread.start()
+
+    def _teardown_refresh_thread(self) -> None:
+        if self._refresh_thread is not None:
+            self._refresh_thread.deleteLater()
+        self._refresh_thread = None
+        self._refresh_worker = None
+        self._refresh_btn.setEnabled(True)
+        self._refresh_progress.setVisible(False)
+
+    def _on_refresh_done(self, result: object) -> None:
+        # result is a RefreshResult; keep the type loose so we don't
+        # bring the import in at module-load time.
+        errors = tuple(getattr(result, "errors", ()))
+        items = tuple(getattr(result, "items", ()))
+        self._update_market_label()
+        if errors:
+            QMessageBox.warning(
+                self,
+                "Partial refresh",
+                "Refreshed with partial failures:\n  - " + "\n  - ".join(errors),
+            )
+        else:
+            QMessageBox.information(
+                self,
+                "Prices refreshed",
+                f"Fetched {len(items)} items from configured retailers.",
+            )
+
+    def _on_refresh_failed(self, message: str) -> None:
+        QMessageBox.critical(
+            self,
+            "Refresh failed",
+            f"{message}\n\nCheck retailer API keys in environment variables:\n"
+            "  PCA_BESTBUY_API_KEY, PCA_EBAY_CLIENT_ID / _SECRET, ...",
+        )
 
     def run(self) -> None:
         snap = self._controller.state.snapshot
@@ -364,16 +614,46 @@ class RecommendTab(QWidget):
         self._render(plan)
 
     def _render(self, plan) -> None:  # type: ignore[no-untyped-def]
+        snap = self._controller.state.snapshot
+        by_id = {c.id: c for c in (snap.components if snap else ())}
         self._table.setRowCount(len(plan.items))
         for row, it in enumerate(plan.items):
+            current = by_id.get(it.replaces_component_id or "")
             self._table.setItem(row, 0, QTableWidgetItem(it.kind.value))
-            self._table.setItem(row, 1, QTableWidgetItem(it.market_item.vendor))
-            self._table.setItem(row, 2, QTableWidgetItem(it.market_item.model))
-            self._table.setItem(
-                row, 3, QTableWidgetItem(f"${it.market_item.price_usd:.2f}")
+            self._table.setCellWidget(
+                row,
+                1,
+                _make_html_label(
+                    _format_upgrade_html(
+                        vendor=it.market_item.vendor,
+                        model=it.market_item.model,
+                        url=it.market_item.url,
+                        source=it.market_item.source,
+                        replaces_vendor=current.vendor if current else None,
+                        replaces_model=current.model if current else None,
+                    )
+                ),
             )
-            self._table.setItem(row, 4, QTableWidgetItem(f"+{it.perf_uplift_pct:.1f}"))
-            self._table.setItem(row, 5, QTableWidgetItem(it.rationale))
+            price_item = QTableWidgetItem(f"${it.market_item.price_usd:.2f}")
+            price_item.setTextAlignment(
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+            )
+            self._table.setItem(row, 2, price_item)
+            self._table.setCellWidget(
+                row, 3, _make_html_label(_format_uplift_html(it.perf_uplift_pct))
+            )
+            current_specs = dict(current.specs) if current else {}
+            new_specs = dict(it.market_item.specs)
+            diff_html = render_spec_diff_html(current_specs, new_specs) or (
+                "<span style='color:#8a8f9a;'>no detailed specs available</span>"
+            )
+            self._table.setCellWidget(row, 4, _make_html_label(diff_html))
+            rationale_html = (
+                f"<div style='line-height:1.45;'>"
+                f"{_html.escape(it.rationale) if it.rationale else '<span style=\"color:#8a8f9a;\">-</span>'}"
+                f"</div>"
+            )
+            self._table.setCellWidget(row, 5, _make_html_label(rationale_html))
         self._summary.setText(
             f"Strategy: {plan.strategy} &nbsp;|&nbsp; "
             f"Plan total: <b>${plan.total_usd:.2f}</b> &nbsp;|&nbsp; "
@@ -418,7 +698,8 @@ class QuoteTab(QWidget):
         self._totals.setPlainText("No quote yet.")
 
         self._table = _make_table(
-            ["Kind", "Vendor", "Model", "Price (USD)"]
+            ["Kind", "Upgrade", "Price (USD)"],
+            initial_widths=[80, 520, 120],
         )
 
         run_btn = QPushButton("Generate quote")
@@ -496,14 +777,31 @@ class QuoteTab(QWidget):
 
     def _render(self, q) -> None:  # type: ignore[no-untyped-def]
         plan = q.plan
+        snap = self._controller.state.snapshot
+        by_id = {c.id: c for c in (snap.components if snap else ())}
         self._table.setRowCount(len(plan.items))
         for row, it in enumerate(plan.items):
+            current = by_id.get(it.replaces_component_id or "")
             self._table.setItem(row, 0, QTableWidgetItem(it.kind.value))
-            self._table.setItem(row, 1, QTableWidgetItem(it.market_item.vendor))
-            self._table.setItem(row, 2, QTableWidgetItem(it.market_item.model))
-            self._table.setItem(
-                row, 3, QTableWidgetItem(f"${it.market_item.price_usd:.2f}")
+            self._table.setCellWidget(
+                row,
+                1,
+                _make_html_label(
+                    _format_upgrade_html(
+                        vendor=it.market_item.vendor,
+                        model=it.market_item.model,
+                        url=it.market_item.url,
+                        source=it.market_item.source,
+                        replaces_vendor=current.vendor if current else None,
+                        replaces_model=current.model if current else None,
+                    )
+                ),
             )
+            price_item = QTableWidgetItem(f"${it.market_item.price_usd:.2f}")
+            price_item.setTextAlignment(
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+            )
+            self._table.setItem(row, 2, price_item)
         self._totals.setPlainText(
             f"Strategy     : {plan.strategy}\n"
             f"Subtotal     : ${plan.total_usd:>10.2f}\n"
@@ -625,6 +923,7 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Load failed", str(exc))
             return
         self._refresh_status()
+        self._recommend._update_market_label()
 
     def _export_report(self) -> None:
         if self._controller.state.snapshot is None:
