@@ -38,10 +38,14 @@ def detect_probe() -> InventoryProbe:
                 "Windows inventory probe is unavailable. "
                 "Install the 'windows' extra: pip install pc-upgrade-advisor[windows]."
             ) from exc
-    if system == "Linux":  # pragma: no cover - implemented in Wave 2
-        raise InventoryError("Linux probe not yet implemented (Wave 2).")
-    if system == "Darwin":  # pragma: no cover - implemented in Wave 4
-        raise InventoryError("macOS probe not yet implemented (Wave 4).")
+    if system == "Linux":
+        from pca.inventory.linux import LinuxInventoryProbe
+
+        return LinuxInventoryProbe()
+    if system == "Darwin":
+        from pca.inventory.macos import MacosInventoryProbe
+
+        return MacosInventoryProbe()
     raise InventoryError(f"Unsupported operating system: {system}")
 
 

@@ -1,61 +1,104 @@
-"""US sales-tax estimator stub.
+"""US sales-tax estimator.
 
-MVP uses a static per-ZIP rate table for a handful of common rates plus a
-national average fallback. A real implementation would call TaxJar / Avalara.
+Resolves a USPS ZIP-5 to an averaged state + local rate using the catalog at
+``resources/catalogs/us_tax_rates.yaml``. The catalog is the single source of
+truth; the legacy hard-coded fallback only runs when the file is missing
+(e.g. in a trimmed wheel). Real tax calculation belongs to a live API
+(TaxJar, Avalara) - see ``docs/data-sources-tos.md``.
 """
 
 from __future__ import annotations
 
 from decimal import ROUND_HALF_UP, Decimal
+from functools import lru_cache
+from pathlib import Path
+from typing import Any
 
-# State-level averaged rate where the ZIP prefix doesn't have a lookup entry.
-# Source: combined state+local averages published by the Tax Foundation, 2024.
-_STATE_AVG = {
-    "CA": Decimal("0.0875"),
-    "NY": Decimal("0.0885"),
-    "TX": Decimal("0.0820"),
-    "WA": Decimal("0.0920"),
-    "OR": Decimal("0.0000"),
-    "MT": Decimal("0.0000"),
-    "NH": Decimal("0.0000"),
-    "DE": Decimal("0.0000"),
-}
+import yaml
 
-_NATIONAL_AVG = Decimal("0.0745")
+
+def _catalog_path() -> Path:
+    return (
+        Path(__file__).resolve().parents[3]
+        / "resources"
+        / "catalogs"
+        / "us_tax_rates.yaml"
+    )
+
+
+@lru_cache(maxsize=1)
+def _catalog() -> dict[str, Any]:
+    path = _catalog_path()
+    if not path.exists():  # pragma: no cover - ships inside resources/
+        return _FALLBACK_CATALOG
+    with path.open("r", encoding="utf-8") as fh:
+        data = yaml.safe_load(fh)
+    if not isinstance(data, dict):
+        return _FALLBACK_CATALOG
+    return data
 
 
 def estimate_tax_usd(subtotal_usd: Decimal, *, zip_code: str | None = None) -> Decimal:
+    """Return the estimated sales tax in USD, rounded to the cent."""
     rate = _rate_for_zip(zip_code)
     return (subtotal_usd * rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
-def _rate_for_zip(zip_code: str | None) -> Decimal:
+def state_for_zip(zip_code: str | None) -> str | None:
+    """Return the USPS state code for ``zip_code`` or None if unresolved."""
     if not zip_code:
-        return _NATIONAL_AVG
+        return None
     prefix = zip_code[:5].strip()
-    if not prefix or not prefix.isdigit():
-        return _NATIONAL_AVG
-    state = _zip_to_state_guess(prefix)
-    return _STATE_AVG.get(state, _NATIONAL_AVG)
+    if len(prefix) != 5 or not prefix.isdigit():
+        return None
+    n = int(prefix)
+    for entry in _catalog().get("zip_ranges", []):
+        lo, hi, state = entry
+        lo_i = int(str(lo).lstrip("0") or "0")
+        hi_i = int(str(hi).lstrip("0") or "0")
+        if lo_i <= n <= hi_i:
+            return str(state)
+    return None
 
 
-def _zip_to_state_guess(zip5: str) -> str:
-    """Return a very coarse ZIP -> state guess. Good enough for MVP."""
-    n = int(zip5)
-    if 90000 <= n <= 96699:
-        return "CA"
-    if 10000 <= n <= 14999:
-        return "NY"
-    if 75000 <= n <= 79999 or 88500 <= n <= 88599:
-        return "TX"
-    if 98000 <= n <= 99499:
-        return "WA"
-    if 97000 <= n <= 97999:
-        return "OR"
-    if 59000 <= n <= 59999:
-        return "MT"
-    if 3000 <= n <= 3999:
-        return "NH"
-    if 19700 <= n <= 19999:
-        return "DE"
-    return "__national__"
+def _rate_for_zip(zip_code: str | None) -> Decimal:
+    national = Decimal(str(_catalog().get("national_average", "0.0745")))
+    state = state_for_zip(zip_code)
+    if state is None:
+        return national
+    states = _catalog().get("states", {})
+    if state not in states:
+        return national
+    return Decimal(str(states[state]))
+
+
+def clear_cache() -> None:
+    """Used by tests after mutating the catalog path."""
+    _catalog.cache_clear()
+
+
+# Minimal embedded fallback so the cache loader is resilient if the YAML file
+# is trimmed from a wheel. Keep these rates conservative.
+_FALLBACK_CATALOG: dict[str, Any] = {
+    "national_average": 0.0745,
+    "states": {
+        "CA": 0.0875,
+        "NY": 0.0885,
+        "TX": 0.0820,
+        "WA": 0.0920,
+        "OR": 0.0,
+        "MT": 0.0,
+        "NH": 0.0,
+        "DE": 0.0,
+    },
+    "zip_ranges": [
+        [90000, 96699, "CA"],
+        [10000, 14999, "NY"],
+        [75000, 79999, "TX"],
+        [98000, 99499, "WA"],
+        [97000, 97999, "OR"],
+        [59000, 59999, "MT"],
+        [3000, 3999, "NH"],
+        [19700, 19999, "DE"],
+    ],
+}

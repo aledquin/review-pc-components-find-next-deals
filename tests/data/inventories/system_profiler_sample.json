@@ -1,0 +1,35 @@
+{
+  "SPHardwareDataType": [
+    {
+      "chip_type": "Apple M2 Pro",
+      "number_processors": 12,
+      "physical_memory": "32 GB",
+      "machine_model": "Mac14,6",
+      "model_identifier": "Mac14,6"
+    }
+  ],
+  "SPDisplaysDataType": [
+    {
+      "_name": "Apple M2 Pro",
+      "sppci_model": "Apple M2 Pro",
+      "spdisplays_vendor": "sppci_vendor_Apple",
+      "spdisplays_metal": "metal-3"
+    }
+  ],
+  "SPStorageDataType": [
+    {
+      "_name": "Macintosh HD",
+      "size_in_bytes": 1000555581440,
+      "physical_drive": {
+        "device_name": "APPLE SSD AP1024Z",
+        "protocol": "PCI-Express"
+      }
+    }
+  ],
+  "SPSoftwareDataType": [
+    {
+      "os_version": "macOS 14.4.1 (23E224)",
+      "kernel_version": "Darwin 23.4.0"
+    }
+  ]
+}

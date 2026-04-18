@@ -23,6 +23,16 @@
     on <strong>{{ snapshot.os_info.family }} {{ snapshot.os_info.version }}</strong>.
   </p>
 
+  {% if chart_data_url %}
+  <figure style="margin:1rem 0">
+    <img src="{{ chart_data_url }}" alt="Current component scores"
+         style="max-width:100%; border:1px solid #eee; border-radius:4px" />
+    <figcaption class="muted" style="font-size:.85rem">
+      Catalog-normalized performance per component (higher is better).
+    </figcaption>
+  </figure>
+  {% endif %}
+
   <h2>Current components</h2>
   <table>
     <thead>

@@ -1,0 +1,66 @@
+{
+  "id": "computer",
+  "class": "system",
+  "claimed": true,
+  "children": [
+    {
+      "id": "core",
+      "class": "bus",
+      "description": "Motherboard",
+      "product": "PRIME B550-PLUS",
+      "vendor": "ASUSTeK COMPUTER INC.",
+      "version": "Rev 1.xx",
+      "children": [
+        {
+          "id": "cpu",
+          "class": "processor",
+          "product": "AMD Ryzen 5 3600 6-Core Processor",
+          "vendor": "Advanced Micro Devices [AMD]",
+          "capacity": 4200000000,
+          "configuration": { "cores": "6", "threads": "12" }
+        },
+        {
+          "id": "memory",
+          "class": "memory",
+          "description": "System Memory",
+          "children": [
+            {
+              "id": "bank:0",
+              "class": "memory",
+              "description": "DIMM DDR4 Synchronous 3200 MHz",
+              "product": "F4-3200C16-8GVRB",
+              "vendor": "G.Skill",
+              "size": 8589934592,
+              "clock": 3200000000
+            },
+            {
+              "id": "bank:1",
+              "class": "memory",
+              "description": "DIMM DDR4 Synchronous 3200 MHz",
+              "product": "F4-3200C16-8GVRB",
+              "vendor": "G.Skill",
+              "size": 8589934592,
+              "clock": 3200000000
+            }
+          ]
+        },
+        {
+          "id": "display",
+          "class": "display",
+          "product": "GeForce RTX 2060 SUPER",
+          "vendor": "NVIDIA Corporation",
+          "configuration": { "driver": "nouveau" }
+        },
+        {
+          "id": "nvme",
+          "class": "disk",
+          "product": "Samsung SSD 970 EVO 1TB",
+          "vendor": "Samsung",
+          "size": 1000204886016,
+          "configuration": { "driver": "nvme" },
+          "logicalname": "/dev/nvme0n1"
+        }
+      ]
+    }
+  ]
+}

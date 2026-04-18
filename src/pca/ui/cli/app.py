@@ -15,6 +15,7 @@ from rich.table import Table
 
 from pca.budget.optimizer_greedy import optimize_greedy
 from pca.budget.optimizer_ilp import optimize_ilp
+from pca.budget.optimizer_multi import optimize_multi
 from pca.core.config import get_settings
 from pca.core.errors import InventoryError
 from pca.core.models import (
@@ -83,6 +84,19 @@ def _resolve_snapshot(stub_path: Path | None) -> SystemSnapshot:
     except InventoryError as exc:  # pragma: no cover - env-specific
         console.print(f"[red]{exc}[/]")
         raise typer.Exit(code=2) from exc
+
+
+def _dispatch_optimizer(
+    strategy: str,
+    snap: SystemSnapshot,
+    constraint: BudgetConstraint,
+    items: tuple[MarketItem, ...],
+):
+    if strategy == "ilp":
+        return optimize_ilp(snap, constraint, items)
+    if strategy == "multi":
+        return optimize_multi(snap, constraint, items)
+    return optimize_greedy(snap, constraint, items)
 
 
 # -------- commands --------
@@ -180,11 +194,7 @@ def recommend(
         ram_type=_ram_type(snap),
         target_workload=Workload(workload),
     )
-    plan = (
-        optimize_ilp(snap, constraint, items)
-        if strategy == "ilp"
-        else optimize_greedy(snap, constraint, items)
-    )
+    plan = _dispatch_optimizer(strategy, snap, constraint, items)
     table = Table(title=f"Upgrade plan ({plan.strategy}, ${plan.total_usd})")
     for col in ("Kind", "Vendor", "Model", "Price", "+%", "Rationale"):
         table.add_column(col)
@@ -221,11 +231,7 @@ def quote(
         socket=_socket(snap),
         ram_type=_ram_type(snap),
     )
-    plan = (
-        optimize_ilp(snap, constraint, items)
-        if strategy == "ilp"
-        else optimize_greedy(snap, constraint, items)
-    )
+    plan = _dispatch_optimizer(strategy, snap, constraint, items)
     matching_deals = tuple(
         d for d in deals if d.market_item_sku in {it.market_item.sku for it in plan.items}
     )
@@ -244,6 +250,49 @@ def quote(
         f"[bold]grand total[/] ${q.grand_total_usd:.2f} "
         f"(subtotal ${q.plan.total_usd:.2f}, tax ${q.tax_usd:.2f}, shipping ${q.shipping_usd:.2f})"
     )
+
+
+@app.command()
+def serve(
+    stub: Annotated[Path | None, typer.Option("--stub")] = None,
+    market_file: Annotated[
+        Path | None,
+        typer.Option("--market", help="Market snapshot fixture consumed by the dashboard."),
+    ] = None,
+    host: Annotated[str, typer.Option("--host")] = "127.0.0.1",
+    port: Annotated[int, typer.Option("--port", min=1, max=65535)] = 8765,
+    lan_token: Annotated[
+        str | None,
+        typer.Option(
+            "--token",
+            help="Required when binding to a non-loopback address.",
+        ),
+    ] = None,
+) -> None:
+    """Wave 3: launch the local FastAPI + HTMX dashboard."""
+    try:
+        import uvicorn
+    except ImportError as exc:  # pragma: no cover
+        console.print(
+            "[red]FastAPI + uvicorn not installed. "
+            "Install the 'web' extra: pip install pc-upgrade-advisor[web][/]"
+        )
+        raise typer.Exit(code=2) from exc
+
+    if host not in {"127.0.0.1", "::1", "localhost"} and not lan_token:
+        console.print("[red]non-loopback host requires --token <secret>[/]")
+        raise typer.Exit(code=2)
+
+    from pca.ui.web.app import ServerConfig, create_app
+
+    cfg = ServerConfig(
+        snapshot_path=stub,
+        market_path=market_file,
+        lan_token=lan_token,
+    )
+    fastapi_app = create_app(cfg)
+    console.print(f"[green]serving[/] http://{host}:{port}  (Ctrl-C to stop)")
+    uvicorn.run(fastapi_app, host=host, port=port, log_level="info")
 
 
 @app.command()

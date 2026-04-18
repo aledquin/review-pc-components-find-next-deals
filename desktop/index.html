@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>PC Upgrade Advisor</title>
+  <style>
+    body { font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+           display: grid; place-items: center; height: 100vh; margin: 0;
+           background: #111; color: #eee; }
+    .logo { font-size: 1.6rem; letter-spacing: .05em; }
+    .status { color: #8fa; margin-top: .5rem; font-size: .9rem; }
+  </style>
+</head>
+<body>
+  <div>
+    <div class="logo">PC Upgrade Advisor</div>
+    <div class="status" id="status">Starting local service...</div>
+  </div>
+  <script>
+    (async () => {
+      const status = document.getElementById('status');
+      for (let i = 0; i < 50; i++) {
+        try {
+          const r = await fetch('http://127.0.0.1:8765/health', {
+            headers: window.__PCA_TOKEN ? { 'x-pca-token': window.__PCA_TOKEN } : {},
+          });
+          if (r.ok) {
+            location.href = 'http://127.0.0.1:8765/';
+            return;
+          }
+        } catch (_) { /* keep waiting */ }
+        await new Promise(r => setTimeout(r, 250));
+      }
+      status.textContent = 'Failed to start local service. Please restart.';
+    })();
+  </script>
+</body>
+</html>

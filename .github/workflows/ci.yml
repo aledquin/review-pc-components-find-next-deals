@@ -50,6 +50,12 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
           cache: pip
+      - name: Apt deps for WeasyPrint (Linux only)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b \
+            libcairo2 libgdk-pixbuf-2.0-0 fonts-dejavu-core lshw
       - name: Install (POSIX)
         if: runner.os != 'Windows'
         run: |
@@ -62,6 +68,15 @@ jobs:
           pip install -e ".[dev,reporting,web,windows]"
       - name: Run unit + functional tests
         run: pytest --cov --cov-report=xml --cov-report=term
+      - name: PDF smoke (Linux only, matplotlib+weasyprint installed)
+        if: runner.os == 'Linux' && matrix.python == '3.12'
+        run: |
+          python -c "from pathlib import Path; \
+from pca.reporting.builder import write_report; \
+from pca.core.models import SystemSnapshot; \
+snap = SystemSnapshot.model_validate_json(Path('tests/data/inventories/rig_mid.json').read_text()); \
+r = write_report(snap, Path('/tmp/pca-pdf-smoke'), include_pdf=True); \
+print('pdf:', r.pdf_path); assert r.pdf_path, 'expected PDF on Linux runner'"
       - name: Upload coverage
         if: matrix.os == 'ubuntu-latest' && matrix.python == '3.12'
         uses: actions/upload-artifact@v4

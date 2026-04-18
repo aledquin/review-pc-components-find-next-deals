@@ -1,0 +1,42 @@
+{
+  "$schema": "https://schema.tauri.app/config/2.0",
+  "productName": "PC Upgrade Advisor",
+  "version": "0.3.0",
+  "identifier": "com.pcupgradeadvisor.desktop",
+  "build": {
+    "beforeDevCommand": "",
+    "beforeBuildCommand": "",
+    "frontendDist": "../index.html"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "PC Upgrade Advisor",
+        "width": 1280,
+        "height": 840,
+        "minWidth": 900,
+        "minHeight": 600,
+        "url": "http://127.0.0.1:8765/"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' 'unsafe-inline' http://127.0.0.1:8765 https://unpkg.com"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": ["icons/icon.png", "icons/icon.ico", "icons/icon.icns"],
+    "shortDescription": "Inspect, benchmark, and upgrade your PC within a budget.",
+    "longDescription": "Local-first PC upgrade assistant. All hardware data stays on the machine unless the user opts in.",
+    "externalBin": ["binaries/pca-sidecar"]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://releases.pcupgradeadvisor.app/latest.json"
+      ],
+      "pubkey": "<replace-with-ed25519-public-key>"
+    }
+  }
+}

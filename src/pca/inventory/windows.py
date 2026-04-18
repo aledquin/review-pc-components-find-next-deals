@@ -8,6 +8,7 @@ Linux runners and for unit tests that never call this probe).
 from __future__ import annotations
 
 import platform
+import warnings
 from typing import Any
 
 from pca.core.errors import InventoryError
@@ -38,7 +39,7 @@ class WindowsInventoryProbe:
         c = wmi.WMI()
         components: list[Component] = []
         components.extend(self._cpus(c))
-        components.extend(self._gpus(c))
+        components.extend(self._gpus(c, _nvml_vram_bytes()))
         components.extend(self._ram(c))
         components.extend(self._motherboards(c))
         components.extend(self._storage(c))
@@ -78,10 +79,26 @@ class WindowsInventoryProbe:
             )
         return out
 
-    def _gpus(self, c: Any) -> list[Component]:
+    def _gpus(self, c: Any, nvml_vram: list[int]) -> list[Component]:
+        # WMI's Win32_VideoController.AdapterRAM is a uint32 exposed as a
+        # signed int, so any card >= ~4 GiB overflows to a bogus (often
+        # negative or zero) value. When NVML is available we prefer it for
+        # NVIDIA GPUs and fall back to WMI only for plausible positive sizes.
         out: list[Component] = []
+        nvml_iter = iter(nvml_vram)
         for i, g in enumerate(c.Win32_VideoController()):
-            vram_bytes = int(getattr(g, "AdapterRAM", 0) or 0)
+            vendor_raw = str(getattr(g, "AdapterCompatibility", "") or "")
+            vendor = normalize_vendor(vendor_raw)
+            name = str(getattr(g, "Name", "") or "")
+            is_nvidia = "nvidia" in vendor_raw.lower() or "nvidia" in name.lower()
+
+            wmi_bytes = int(getattr(g, "AdapterRAM", 0) or 0)
+            vram_bytes: int | None = wmi_bytes if wmi_bytes > 0 else None
+            if is_nvidia:
+                nvml_bytes = next(nvml_iter, None)
+                if nvml_bytes is not None and nvml_bytes > 0:
+                    vram_bytes = nvml_bytes
+
             specs: dict[str, Any] = {
                 "vram_gb": round(vram_bytes / (1024**3), 2) if vram_bytes else None,
                 "driver_version": str(getattr(g, "DriverVersion", "") or ""),
@@ -91,10 +108,8 @@ class WindowsInventoryProbe:
                 Component(
                     id=f"gpu-{i + 1}",
                     kind=ComponentKind.GPU,
-                    vendor=normalize_vendor(
-                        str(getattr(g, "AdapterCompatibility", "") or "")
-                    ),
-                    model=normalize_model(str(getattr(g, "Name", "") or "")),
+                    vendor=vendor,
+                    model=normalize_model(name),
                     specs={k: v for k, v in specs.items() if v is not None},
                 )
             )
@@ -214,6 +229,46 @@ class WindowsInventoryProbe:
             build=str(getattr(o, "BuildNumber", "") or None) or None,
             arch=str(getattr(o, "OSArchitecture", "") or None) or None,
         )
+
+
+def _nvml_vram_bytes() -> list[int]:
+    """Return per-device VRAM sizes in bytes, in NVML enumeration order.
+
+    Returns an empty list when NVML is unavailable, the driver is not
+    loaded, or any step fails. Callers must not depend on NVML being
+    present — it is an optional enhancement for NVIDIA GPUs only.
+    """
+    try:
+        with warnings.catch_warnings():
+            # pynvml has been renamed to nvidia-ml-py and emits a
+            # FutureWarning on import; our pytest config escalates
+            # warnings to errors, so silence it at the source.
+            warnings.simplefilter("ignore", FutureWarning)
+            import pynvml  # type: ignore[import-not-found]  # noqa: PLC0415
+    except ImportError:
+        return []
+
+    try:
+        pynvml.nvmlInit()
+    except Exception:  # noqa: BLE001 - NVML exposes a bespoke exception hierarchy
+        return []
+    try:
+        count = int(pynvml.nvmlDeviceGetCount())
+        sizes: list[int] = []
+        for idx in range(count):
+            try:
+                handle = pynvml.nvmlDeviceGetHandleByIndex(idx)
+                sizes.append(int(pynvml.nvmlDeviceGetMemoryInfo(handle).total))
+            except Exception:  # noqa: BLE001 - skip individual failures
+                sizes.append(0)
+        return sizes
+    except Exception:  # noqa: BLE001
+        return []
+    finally:
+        try:
+            pynvml.nvmlShutdown()
+        except Exception:  # noqa: BLE001
+            pass
 
 
 # SMBIOS memory-type codes we care about. Unknown codes map to "Unknown"

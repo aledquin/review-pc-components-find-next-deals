@@ -13,6 +13,11 @@ Status is one of `Proposed`, `Accepted`, `Deprecated`, or `Superseded by NNNN`.
 - [0005 - CLI-first UX roadmap](0005-cli-first-ui-roadmap.md)
 - [0006 - Retailer adapters via a Protocol + registry](0006-market-adapter-registry.md)
 - [0007 - No scraping without an explicit opt-in](0007-scraping-off-by-default.md)
+- [0008 - WeasyPrint for PDF, with graceful fallback](0008-weasyprint-pdf.md)
+- [0009 - lshw-first Linux probe, `/proc` fallback](0009-linux-probe-lshw.md)
+- [0010 - FastAPI + HTMX for the local dashboard](0010-fastapi-htmx-dashboard.md)
+- [0011 - Tauri desktop shell with Python sidecar](0011-tauri-shell.md)
+- [0012 - Retailer plugin SDK via entry points](0012-plugin-sdk.md)
 
 ## Template
 
